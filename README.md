@@ -1,6 +1,6 @@
 netmsg
 ======================
-mom消息组件的C#实现
+mom组件(https://git.oschina.net/lizs4ever/MOM.git)的C#实现
 
 ##Getting started
 ###Server
