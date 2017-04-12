@@ -39,7 +39,7 @@ namespace mom {
         /// <summary>
         ///     By me
         /// </summary>
-        ClosedByMyself,
+        Stop,
 
         /// <summary>
         ///     By peer
@@ -115,6 +115,8 @@ namespace mom {
 
         public Action<Session, byte[]> PushHandler { get; set; } = null;
         public Action<Session, byte[], Action<ushort, byte[]>> RequestHandler { get; set; } = null;
+        public Action<Session, SessionCloseReason> CloseHandler { get; set; } = null;
+        public Action<Session> OpenHandler { get; set; } = null;
 
         public Session(Socket socket, ushort id) {
             UnderlineSocket = socket;
@@ -128,8 +130,10 @@ namespace mom {
         }
 
         public void Close(SessionCloseReason reason) {
-            if(_active == 0) return;
+            if (_active == 0) return;
             Interlocked.Exchange(ref _active, 0);
+
+            CloseHandler?.Invoke(this, reason);
 
             if (UnderlineSocket.Connected)
                 UnderlineSocket.Shutdown(SocketShutdown.Both);
@@ -197,6 +201,18 @@ namespace mom {
             }
         }
 
+        private void Pong()
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                bw.Write((ushort)PatternSize);
+                bw.Write((byte)Pattern.Pong);
+
+                Send(ms.ToArray(), null);
+            }
+        }
+
 
         private void Send(byte[] data, Action<bool> cb) {
             if (_active == 0) {
@@ -238,17 +254,19 @@ namespace mom {
 
             e.Completed -= OnSendCompleted;
             SocketAsyncEventArgsPool.Instance.Push(e);
+
+            Monitor.Instance.IncWroted();
         }
 
         private void WakeupReceive() {
             ReceiveNext();
         }
 
-        public void Start()
-        {
+        public void Start() {
             Interlocked.Exchange(ref _active, 1);
             // 投递首次接受请求
             WakeupReceive();
+            OpenHandler?.Invoke(this);
         }
 
         private void ProcessReceive() {
@@ -272,20 +290,20 @@ namespace mom {
             if (_receiveBuffer.Overload)
                 _receiveBuffer.Arrange();
 
-            while (_packer.Packages.Count > 0) {
-                try {
-                    Dispatch();
+            // 包处理放在Loop线程
+            // 因为Timer也是在Loop线程
+            Loop.Instance.Perform(() => {
+                while (_packer.Packages.Count > 0) {
+                    try {
+                        Dispatch();
+                    }
+                    catch {
+                        Close(SessionCloseReason.ReadError);
+                    }
                 }
-                catch {
-                    Close(SessionCloseReason.ReadError);
-                }
-            }
 
-            ReceiveNext();
-        }
-
-        private void Pong() {
-            
+                ReceiveNext();
+            });
         }
 
         private void OnResponse(ushort serial, byte[] data) {
@@ -332,10 +350,13 @@ namespace mom {
 
                     case Pattern.Pong:
                         break;
+
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
             }
+
+            Monitor.Instance.IncReaded();
         }
 
         private void ReceiveNext() {

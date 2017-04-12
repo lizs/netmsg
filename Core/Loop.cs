@@ -39,9 +39,8 @@ namespace mom {
         public static Loop Instance { get; } = new Loop();
 
         private const int StopWatchDivider = 128;
-        private bool _stopWorking;
+        private bool _quit;
         private readonly Stopwatch _watch = new Stopwatch();
-        private int _previousCalcTime;
         private readonly BlockingCollection<IJob> _workingQueue;
 
         /// <summary>
@@ -104,12 +103,6 @@ namespace mom {
         public int Jobs => _workingQueue.Count;
 
         /// <summary>
-        ///     性能指标
-        ///     每秒执行的Job
-        /// </summary>
-        public int ExcutedJobsPerSec { get; set; }
-        
-        /// <summary>
         ///     Get the elapsed milliseconds since the instance been constructed
         /// </summary>
         public long ElapsedMilliseconds => _watch.ElapsedMilliseconds;
@@ -144,20 +137,6 @@ namespace mom {
             Enqueue(job);
         }
 
-        /// <summary>
-        ///     计算性能
-        /// </summary>
-        public void CalcPerformance() {
-            var delta = (Environment.TickCount - _previousCalcTime)/1000.0f;
-            if (delta < 1.0f)
-                ++ExcutedJobsPerSec;
-            else {
-                ExcutedJobsPerSec = (int) (ExcutedJobsPerSec/delta);
-                _previousCalcTime = Environment.TickCount;
-                ExcutedJobsPerSec = 0;
-            }
-        }
-
         public Loop() {
             _workingQueue = new BlockingCollection<IJob>();
             Scheduler = new TimerScheduler();
@@ -167,7 +146,7 @@ namespace mom {
             Scheduler.Start();
             _watch.Start();
 
-            while (!_stopWorking) {
+            while (!_quit) {
                 var periodCounter = StopWatchDivider;
                 var tick = Environment.TickCount;
 
@@ -178,8 +157,6 @@ namespace mom {
                         IJob item;
                         if (_workingQueue.TryTake(out item, Period)) {
                             item.Do();
-                            CalcPerformance();
-
                             periodCounter--;
 
                             if (periodCounter >= 1) continue;
@@ -218,7 +195,7 @@ namespace mom {
         }
 
         public void Stop() {
-            _stopWorking = true;
+            _quit = true;
             Scheduler.Stop();
         }
     }

@@ -31,46 +31,27 @@ using System.Linq;
 
 namespace mom {
     public class SessionMgr {
-        private Action<Session> _openCb;
-        private Action<Session, SessionCloseReason> _closeCb;
         private readonly ConcurrentDictionary<ushort, Session> _items = new ConcurrentDictionary<ushort, Session>();
-
-        public SessionMgr(Action<Session> openCb, Action<Session, SessionCloseReason> closeCb) {
-            _openCb = openCb;
-            _closeCb = closeCb;
-        }
 
         public void Stop() {
             Clear();
-
-            _openCb = null;
-            _closeCb = null;
         }
 
-        public void AddSession(Session session) {
-            if (_items.TryAdd(session.Id, session)) {
-                _openCb?.Invoke(session);
-            }
-            else
-                Logger.Ins.Warn("Insert session failed for id : " + session.Id);
+        public bool AddSession(Session session) {
+            return _items.TryAdd(session.Id, session);
         }
 
-        public void RemoveSession(ushort id, SessionCloseReason reason) {
+        public bool RemoveSession(ushort id, SessionCloseReason reason) {
             Session session;
-            if (_items.TryRemove(id, out session)) {
-                if (_closeCb == null) return;
-                _closeCb(session, reason);
-            }
-            else if (_items.ContainsKey(id))
-                Logger.Ins.Warn("Remove session failed for id : " + id);
-            else
-                Logger.Ins.Warn("Remove session failed for id :  cause of it doesn't exist" + id);
+            return _items.TryRemove(id, out session);
         }
 
         public void Clear() {
             foreach (var session in _items.Select(x => x.Value)) {
-                session.Close(SessionCloseReason.ClosedByMyself);
+                session.Close(SessionCloseReason.Stop);
             }
+
+            _items.Clear();
         }
     }
 }

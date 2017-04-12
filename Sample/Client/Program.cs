@@ -1,4 +1,5 @@
 ﻿#region MIT
+
 //  /*The MIT License (MIT)
 // 
 //  Copyright 2016 lizs lizs4ever@163.com
@@ -21,22 +22,23 @@
 //  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 //  THE SOFTWARE.
 //   * */
+
 #endregion
+
 using System;
 using System.Text;
 using mom;
 
-namespace Sample
-{
-    internal class Program
-    {
+namespace Sample {
+    internal class Program {
         private static Client _client;
         private static Server _server;
 
         private static readonly byte[] PushData = Encoding.ASCII.GetBytes("Hello world!");
+
         private static void Push(Session session) {
             session.Push(PushData, b => {
-                if(b)
+                if (b)
                     Push(session);
                 else
                     Console.WriteLine("Push failed");
@@ -59,9 +61,12 @@ namespace Sample
                 run_client();
             }
 
+            Monitor.Instance.Start();
+
             // 创建并启动Launcher
             Loop.Instance.Run();
 
+            Monitor.Instance.Stop();
             // 销毁客户端
             _client?.Stop();
             _server?.Stop();
@@ -71,28 +76,23 @@ namespace Sample
             // 创建并启动客户端
             _client = new Client("127.0.0.1", 5002) {
                 PushHandler = (session, bytes) => { },
-                RequestHandler = (session, bytes, cb) => { cb((ushort) NetError.Success, null); }
+                RequestHandler = (session, bytes, cb) => { cb((ushort) NetError.Success, null); },
+                OpenHandler = session => { Push(session); },
+                CloseHandler = (session, reason) => { }
             };
             _client.Start();
-
-            _client.EventConnected += session => {
-                Console.WriteLine("connected");
-                Push(session);
-            };
         }
 
         private static void run_server() {
             // 创建并启动客户端
             _server = new Server("127.0.0.1", 5002) {
                 PushHandler = (session, bytes) => { },
-                RequestHandler = (session, bytes, cb) => { cb((ushort) NetError.Success, null); }
+                RequestHandler = (session, bytes, cb) => { cb((ushort) NetError.Success, null); },
+                OpenHandler = session => { },
+                CloseHandler = (session, reason) => { }
             };
 
             _server.Start();
-
-            _server.EventSessionEstablished += session => {
-                Console.WriteLine("connected");
-            };
         }
     }
 }

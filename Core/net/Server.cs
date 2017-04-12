@@ -42,16 +42,13 @@ namespace mom {
 
         public SessionMgr SessionMgr { get; }
 
-        public event Action<Session, SessionCloseReason> EventSessionClosed;
-        public event Action<Session> EventSessionEstablished;
-        public event Action<string> EventErrorCatched;
-        public event Action EventClosing;
-
         private Socket _listener;
         private SocketAsyncEventArgs _acceptEvent;
 
         public Action<Session, byte[]> PushHandler { get; set; } = null;
         public Action<Session, byte[], Action<ushort, byte[]>> RequestHandler { get; set; } = null;
+        public Action<Session, SessionCloseReason> CloseHandler { get; set; } = null;
+        public Action<Session> OpenHandler { get; set; } = null;
 
         public Server(string ip, int port) {
             Ip = ip;
@@ -64,26 +61,9 @@ namespace mom {
             Address = address;
             EndPoint = new IPEndPoint(Address, Port);
 
-            SessionMgr = new SessionMgr(session => {
-                EventSessionEstablished?.Invoke(session);
-                OnConnected(session);
-            }, (session, reason) => {
-                EventSessionClosed?.Invoke(session, reason);
-                OnDisconnected(session, reason);
-            });
+            SessionMgr = new SessionMgr();
         }
-
-        private void OnConnected(Session session) {
-            Logger.Ins.Info("{0}:{1} connected!", Name, session.Name);
-            session.RequestHandler = RequestHandler;
-            session.PushHandler = PushHandler;
-            session.Start();
-        }
-
-        private void OnDisconnected(Session session, SessionCloseReason reason) {
-            Logger.Ins.Info("{0}:{1} disconnected by {2}", Name, session.Name, reason);
-        }
-
+        
         private void OnError(string msg) {
             Logger.Ins.Error("{0}:{1}", Name, msg);
         }
@@ -107,12 +87,6 @@ namespace mom {
         }
 
         public void Stop() {
-            EventClosing = null;
-            EventSessionClosed = null;
-            EventSessionEstablished = null;
-
-            EventClosing?.Invoke();
-
             SessionMgr.Stop();
 
             _listener.Close();
@@ -130,10 +104,24 @@ namespace mom {
                 Logger.Ins.Error("Listener down!");
                 Stop();
             }
-            else
-            {
-                var session = new Session(sock, ++_sessionIdSeed);
-                SessionMgr.AddSession(session);
+            else {
+                var session = new Session(sock, ++_sessionIdSeed) {
+                    OpenHandler = s => {
+                        Logger.Ins.Info("{0}:{1} connected!", Name, s.Name);
+                        OpenHandler?.Invoke(s);
+                    },
+                    CloseHandler = (s, reason) => {
+                        Logger.Ins.Info("{0}:{1} disconnected by {2}", Name, s.Name, reason);
+                        CloseHandler?.Invoke(s, reason);
+                    },
+                    PushHandler = PushHandler,
+                    RequestHandler = RequestHandler
+                };
+
+                if (SessionMgr.AddSession(session)) {
+                    session.Start();
+                }
+
                 AcceptNext();
             }
         }
@@ -149,7 +137,6 @@ namespace mom {
             catch (Exception e) {
                 var msg = $"Accept failed, detail {e.Message} : {e.StackTrace}";
                 OnError(msg);
-                EventErrorCatched?.Invoke(msg);
                 AcceptNext();
             }
         }

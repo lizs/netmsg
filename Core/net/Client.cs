@@ -32,7 +32,7 @@ using System.Net.Sockets;
 namespace mom {
     /// <summary>
     /// </summary>
-    public class Client {
+    public sealed class Client {
         /// <summary>
         ///     Default reconnect retry delay time
         /// </summary>
@@ -42,22 +42,7 @@ namespace mom {
         ///     Default reconnect retry max delay time
         /// </summary>
         public const uint ReconnectMaxDelay = 32*1000;
-
-        /// <summary>
-        ///     Raised when a session closed
-        /// </summary>
-        public event Action<Session, SessionCloseReason> EventClosed;
-
-        /// <summary>
-        ///     Raised when a session established
-        /// </summary>
-        public event Action<Session> EventConnected;
         
-        /// <summary>
-        ///     Raised when error catched
-        /// </summary>
-        public event Action<string> EventErrorCatched;
-
         public string Name => $"{Ip}:{Port}";
 
         public string Ip { get; private set; }
@@ -89,10 +74,12 @@ namespace mom {
         public Session Session { get; private set; }
         private SocketAsyncEventArgs _connectEvent;
         private bool _connected;
-        private Scheduler _scheduler = new Scheduler();
+        private readonly Scheduler _scheduler = new Scheduler();
 
         public Action<Session, byte[]> PushHandler { get; set; } = null;
         public Action<Session, byte[], Action<ushort, byte[]>> RequestHandler { get; set; } = null;
+        public Action<Session, SessionCloseReason> CloseHandler { get; set; } = null;
+        public Action<Session> OpenHandler { get; set; } = null;
 
         public Client(string ip, int port,  bool autoReconnectEnabled = true) {
             AutoReconnectEnabled = autoReconnectEnabled;
@@ -102,29 +89,12 @@ namespace mom {
             else if (!SetAddress(ip, port))
                 throw new Exception("Ip or Port is invalid!");
         }
-
-        protected virtual void OnConnected(Session session) {
-            Connected = true;
-            Logger.Ins.Info("{0}:{1} connected!", Name, session.Name);
-        }
-
-        protected virtual void OnDisconnected(Session session, SessionCloseReason reason) {
-            Connected = false;
-            Logger.Ins.Info("{0}:{1} disconnected by {2}", Name, session.Name, reason);
-
-            if (AutoReconnectEnabled) {
-                // todo
-                // Invoke(Reconnect, ReconnectRetryDelay);
-            }
-        }
-
-        protected virtual void OnError(string msg) {
-            Connected = false;
+        
+        private void OnError(string msg) {
             Logger.Ins.Error("{0}:{1}", Name, msg);
 
             if (AutoReconnectEnabled) {
-                // todo
-                // Invoke(Reconnect, ReconnectRetryDelay);
+                _scheduler.Invoke(Reconnect, ReconnectRetryDelay);
             }
         }
 
@@ -139,8 +109,6 @@ namespace mom {
             catch (Exception e) {
                 var msg = $"{e.Message} : {e.StackTrace}";
                 OnError(msg);
-
-                EventErrorCatched?.Invoke(msg);
 
                 Ip = string.Empty;
                 Port = 0;
@@ -162,15 +130,12 @@ namespace mom {
         }
 
         public void Stop() {
-            EventClosed = null;
-            EventConnected = null;
-
             _connectEvent.Dispose();
             _underlineSocket.Close();
+            Session.Close(SessionCloseReason.Stop);
 
-            EventClosed?.Invoke(Session, SessionCloseReason.ClosedByMyself);
-            Session.Close(SessionCloseReason.ClosedByMyself);
-            
+            _underlineSocket = null;
+            _connectEvent = null;
             Logger.Ins.Debug("Client stopped!");
         }
 
@@ -189,17 +154,27 @@ namespace mom {
             catch (Exception e) {
                 var msg = $"Connection failed, detail {e.Message} : {e.StackTrace}";
                 OnError(msg);
-
-                EventErrorCatched?.Invoke(msg);
             }
         }
 
         private void HandleConnection(Socket sock) {
             Session = new Session(sock, 0) {
                 RequestHandler = RequestHandler,
-                PushHandler = PushHandler
+                PushHandler = PushHandler,
+                OpenHandler = session => {
+                    Logger.Ins.Info("{0}:{1} connected!", Name, session.Name);
+                    OpenHandler?.Invoke(session);
+                },
+                CloseHandler = (session, reason) => {
+                    Logger.Ins.Info("{0}:{1} disconnected by {2}", Name, session.Name, reason);
+                    if (AutoReconnectEnabled && reason != SessionCloseReason.Stop) {
+                        _scheduler.Invoke(Reconnect, ReconnectRetryDelay);
+                    }
+                    CloseHandler?.Invoke(session, reason);
+                }
             };
-            EventConnected?.Invoke(Session);
+
+            Session.Start();
         }
 
         private void OnConnectCompleted(object sender, SocketAsyncEventArgs e) {
@@ -208,7 +183,6 @@ namespace mom {
             else {
                 var msg = $"Connection failed, detail {e.SocketError}";
                 OnError(msg);
-                EventErrorCatched?.Invoke(msg);
             }
         }
     }

@@ -30,41 +30,41 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace mom {
-    public class Scheduler {
-        protected readonly Dictionary<Action, TimerWrapper> Timers = new Dictionary<Action, TimerWrapper>();
+    public sealed class Scheduler {
+        private readonly Dictionary<Action, TimerWrapper> _timers = new Dictionary<Action, TimerWrapper>();
 
         public void Stop() {
             Clear();
         }
 
         public void Clear() {
-            foreach (var timer in Timers.Select(x => x.Value))
+            foreach (var timer in _timers.Select(x => x.Value))
                 timer.Stop();
-            Timers.Clear();
+            _timers.Clear();
         }
 
-        public virtual void InternalInvokeRepeating(Action action, uint delay, uint period) {
-            InternalCancelInvoke(action);
+        public void Invoke(Action action, uint delay, uint period) {
+            Cancel(action);
 
             var timer = TimerWrapper.Create(action, delay, period);
-            Timers.Add(action, timer);
+            _timers.Add(action, timer);
             timer.Start();
         }
 
-        public virtual void InternalInvoke(Action action, uint delay) {
-            InternalCancelInvoke(action);
+        public void Invoke(Action action, uint delay) {
+            Cancel(action);
 
             var timer = TimerWrapper.Create(action, delay);
-            Timers.Add(action, timer);
+            _timers.Add(action, timer);
             timer.Start();
         }
 
-        public void InternalCancelInvoke(Action action) {
-            if (!Timers.ContainsKey(action)) return;
+        public void Cancel(Action action) {
+            if (!_timers.ContainsKey(action)) return;
 
-            var timer = Timers[action];
+            var timer = _timers[action];
             timer.Stop();
-            Timers.Remove(action);
+            _timers.Remove(action);
         }
     }
 }
