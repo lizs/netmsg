@@ -27,23 +27,14 @@
 
 using System;
 using System.Text;
+using System.Threading.Tasks;
 using mom;
+using Monitor = mom.Monitor;
 
 namespace Sample {
     internal class Program {
         private static Client _client;
         private static Server _server;
-
-        private static readonly byte[] PushData = Encoding.ASCII.GetBytes("Hello world!");
-
-        private static void Push(Session session) {
-            session.Push(PushData, b => {
-                if (b)
-                    Push(session);
-                else
-                    Console.WriteLine("Push failed");
-            });
-        }
 
         private static void Main(string[] args) {
             if (args.Length > 0) {
@@ -72,26 +63,41 @@ namespace Sample {
             _server?.Stop();
         }
 
+        private class ClientHandler : DefaultHandler {
+            private static readonly byte[] Data = Encoding.ASCII.GetBytes("Hello world!");
+            private static void Push(Session session) {
+                session.Push(Data, b => {
+                    if (b)
+                        Push(session);
+                    else
+                        Console.WriteLine("Push failed");
+                });
+            }
+
+            private static async Task<bool> Request(Session session) {
+                while (true) {
+                    var ret = await session.Request(Data);
+                    return await Request(session);
+                }
+            }
+
+            public override void OnOpen(Session session) {
+                Request(session);
+
+                // or push
+                //Push(session);
+            }
+        }
+
         private static void run_client() {
             // 创建并启动客户端
-            _client = new Client("127.0.0.1", 5002) {
-                PushHandler = (session, bytes) => { },
-                RequestHandler = (session, bytes, cb) => { cb((ushort) NetError.Success, null); },
-                OpenHandler = session => { Push(session); },
-                CloseHandler = (session, reason) => { }
-            };
+            _client = new Client("127.0.0.1", 5002, new ClientHandler()); 
             _client.Start();
         }
 
         private static void run_server() {
             // 创建并启动客户端
-            _server = new Server("127.0.0.1", 5002) {
-                PushHandler = (session, bytes) => { },
-                RequestHandler = (session, bytes, cb) => { cb((ushort) NetError.Success, null); },
-                OpenHandler = session => { },
-                CloseHandler = (session, reason) => { }
-            };
-
+            _server = new Server("127.0.0.1", 5002);
             _server.Start();
         }
     }

@@ -30,6 +30,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net.Sockets;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace mom {
     /// <summary>
@@ -112,15 +113,13 @@ namespace mom {
 
         private ushort _serialSeed;
         private volatile int _active;
+        private readonly IHandler _handler;
 
-        public Action<Session, byte[]> PushHandler { get; set; } = null;
-        public Action<Session, byte[], Action<ushort, byte[]>> RequestHandler { get; set; } = null;
-        public Action<Session, SessionCloseReason> CloseHandler { get; set; } = null;
-        public Action<Session> OpenHandler { get; set; } = null;
-
-        public Session(Socket socket, ushort id) {
+        public Session(Socket socket, ushort id, IHandler handler = null) {
             UnderlineSocket = socket;
             Id = id;
+
+            _handler = handler ?? new DefaultHandler();
 
             _receiveBuffer = new CircularBuffer(ReceiveBufferSize);
             _packer = new Packer(PackageMaxSize);
@@ -133,7 +132,7 @@ namespace mom {
             if (_active == 0) return;
             Interlocked.Exchange(ref _active, 0);
 
-            CloseHandler?.Invoke(this, reason);
+            _handler.OnClose(this, reason);
 
             if (UnderlineSocket.Connected)
                 UnderlineSocket.Shutdown(SocketShutdown.Both);
@@ -149,6 +148,27 @@ namespace mom {
             Logger.Ins.Info("Session closed");
         }
 
+        /// <summary>
+        ///  awaitable Request
+        /// </summary>
+        /// <param name="data"></param>
+        /// <returns></returns>
+        public async Task<Tuple<ushort, byte[]>> Request(byte[] data) {
+            var tcs = new TaskCompletionSource<Tuple<ushort, byte[]>>();
+            try {
+                Request(data, (error, bytes) => {
+                    if (!tcs.TrySetResult(new Tuple<ushort, byte[]>(error, bytes))) {
+                        Logger.Ins.Error("TrySetResult failed");
+                    }
+                });
+            }
+            catch (Exception ex) {
+                tcs.SetException(ex);
+            }
+
+            return await tcs.Task;
+        }
+
         public void Request(byte[] data, Action<ushort, byte[]> cb) {
             ++_serialSeed;
             if (_requests.ContainsKey(_serialSeed)) {
@@ -160,15 +180,16 @@ namespace mom {
 
             using (var ms = new MemoryStream())
             using (var bw = new BinaryWriter(ms)) {
-                bw.Write((ushort)((data.IsNullOrEmpty() ? 0 : data.Length) + PatternSize + SerialSize));
+                bw.Write((ushort) ((data.IsNullOrEmpty() ? 0 : data.Length) + PatternSize + SerialSize));
                 bw.Write((byte) Pattern.Request);
                 bw.Write(_serialSeed);
                 if (!data.IsNullOrEmpty())
                     bw.Write(data);
 
                 Send(ms.ToArray(), b => {
-                    if (!b) {
-                        cb?.Invoke((ushort) NetError.Write, null);
+                    if (!b)
+                    {
+                        cb?.Invoke((ushort)NetError.Write, null);
                     }
                 });
             }
@@ -266,7 +287,7 @@ namespace mom {
             Interlocked.Exchange(ref _active, 1);
             // 投递首次接受请求
             WakeupReceive();
-            OpenHandler?.Invoke(this);
+            _handler.OnOpen(this);
         }
 
         private void ProcessReceive() {
@@ -306,11 +327,19 @@ namespace mom {
             });
         }
 
-        private void OnResponse(ushort serial, byte[] data) {
-            
+        private void OnResponse(ushort serial, ushort err, byte[] data) {
+            if (!_requests.ContainsKey(serial)) {
+                Logger.Ins.Warn($"{serial} not exist in request pool");
+                return;
+            }
+
+            var cb = _requests[serial];
+            _requests.Remove(serial);
+
+            cb?.Invoke(err, data);
         }
 
-        private void Dispatch() {
+        private async Task<bool> Dispatch() {
             var pack = _packer.Packages.Dequeue();
 
             var left = pack.Length;
@@ -320,26 +349,23 @@ namespace mom {
                 left -= PatternSize;
                 switch (pattern) {
                     case Pattern.Push:
-                        PushHandler?.Invoke(this, br.ReadBytes(left));
+                        _handler.OnPush(this, br.ReadBytes(left));
                         break;
 
                     case Pattern.Request: {
                         var serial = br.ReadUInt16();
                         left -= SerialSize;
-                        if (RequestHandler != null) {
-                            RequestHandler(this, br.ReadBytes(left),
-                                (en, bytes) => { Response(en, serial, bytes, null); });
-                        }
-                        else {
-                            Response((ushort) NetError.NoHandler, serial, null, null);
-                        }
+                        var ret = await _handler.OnRequest(this, br.ReadBytes(left));
+                        Response(ret.Item1, serial, ret.Item2, null);
                         break;
                     }
 
                     case Pattern.Response: {
                         var serial = br.ReadUInt16();
                         left -= SerialSize;
-                        OnResponse(serial, br.ReadBytes(left));
+                        var err = br.ReadUInt16();
+                            left -= ErrorNoSize;
+                            OnResponse(serial, err, br.ReadBytes(left));
                         break;
                     }
 
@@ -357,6 +383,7 @@ namespace mom {
             }
 
             Monitor.Instance.IncReaded();
+            return true;
         }
 
         private void ReceiveNext() {

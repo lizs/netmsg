@@ -100,7 +100,7 @@ namespace mom {
     }
 
     /// <summary>
-    ///     Define the constant variable used by <c>TimerScheduler</c> class
+    ///     Define the constant variable used by <c>TimerManager</c> class
     /// </summary>
     internal static class TimerConstant {
         public const int TvnBits = 6;
@@ -146,17 +146,11 @@ namespace mom {
     /// <summary>
     ///     A Linux style timer scheduler
     /// </summary>
-    public class TimerScheduler {
-        public void Start() {
-            Loop.Instance.Idle += RunTimer;
-            _timerJiffies = Loop.Instance.ElapsedMilliseconds;
+    public class TimerManager {
+        public TimerManager() {
+            _timerJiffies = 0;
         }
-
-
-        public void Stop() {
-            Loop.Instance.Idle -= RunTimer;
-        }
-
+        
         /// <summary>
         ///     This field used to store how many milliseconds
         ///     elapsed since this scheduler been constructed.
@@ -205,8 +199,8 @@ namespace mom {
         ///     <c>StaService</c>'s Idle event call this method
         ///     to check all expired timers.
         /// </summary>
-        private void RunTimer() {
-            var jiffes = Loop.Instance.ElapsedMilliseconds;
+        public void Update(long time) {
+            var jiffes = time;
             while (jiffes - _timerJiffies >= 0) {
                 var index = (int) (_timerJiffies & TimerConstant.TvrMask);
                 if (index == 0) {

@@ -38,7 +38,6 @@ namespace mom {
     public sealed class Loop {
         public static Loop Instance { get; } = new Loop();
 
-        private const int StopWatchDivider = 128;
         private bool _quit;
         private readonly Stopwatch _watch = new Stopwatch();
         private readonly BlockingCollection<IJob> _workingQueue;
@@ -46,7 +45,15 @@ namespace mom {
         /// <summary>
         ///     定时器调度器
         /// </summary>
-        public TimerScheduler Scheduler { get; }
+        private TimerManager TimerMgr { get; }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public Loop() {
+            _workingQueue = new BlockingCollection<IJob>();
+            TimerMgr = new TimerManager();
+        }
 
         /// <summary>
         ///     在本服务执行该Action
@@ -66,16 +73,21 @@ namespace mom {
         }
 
         /// <summary>
-        ///     Idle event, call by working thread
-        ///     every period.
-        ///     <remarks>
-        ///         generally the working thread
-        ///         call the event every period, but if it's too busy
-        ///         because the working item consumes too much time,
-        ///         the calling period may grater than the original period
-        ///     </remarks>
+        ///     添加定时器
         /// </summary>
-        public event Action Idle;
+        /// <param name="timer"></param>
+        public void QueueTimer(Timer timer) {
+            TimerMgr.Add(timer);
+        }
+
+        /// <summary>
+        ///     移除定时器
+        /// </summary>
+        /// <param name="timer"></param>
+        public void DequeueTimer(Timer timer)
+        {
+            TimerMgr.Remove(timer);
+        }
 
         /// <summary>
         ///     Specify the working period of the working thread in milliseconds.
@@ -83,19 +95,6 @@ namespace mom {
         ///     procedure's top. and, the Idle event is called.
         /// </summary>
         public int Period { get; set; } = 10;
-
-        /// <summary>
-        ///     A time counter that count the work items consume how much time
-        ///     in one working thread's loop. It maybe grater than the working period,
-        ///     which indicates the work items consume too much time.
-        /// </summary>
-        public long WiElapsed { get; set; }
-
-        /// <summary>
-        ///     A time counter that count the Idle event callbacks consume how much
-        ///     time in one working thread's loop. This value should be less than period.
-        /// </summary>
-        public long IdleCallbackElapsed { get; set; }
 
         /// <summary>
         ///     Specify the work items count currently in working queue.
@@ -113,7 +112,7 @@ namespace mom {
         ///     be null.
         /// </summary>
         /// <param name="w">the work item object, must not be null</param>
-        public void Enqueue(IJob w) {
+        private void Enqueue(IJob w) {
             _workingQueue.Add(w);
         }
 
@@ -123,7 +122,7 @@ namespace mom {
         /// </summary>
         /// <param name="proc">the working procedure</param>
         /// <param name="param">additional parameter that passed to working procedure</param>
-        public void Enqueue<T>(Action<T> proc, T param) {
+        private void Enqueue<T>(Action<T> proc, T param) {
             var w = new Job<T>(proc, param);
             Enqueue(w);
         }
@@ -132,38 +131,28 @@ namespace mom {
         ///     入队
         /// </summary>
         /// <param name="proc"></param>
-        public void Enqueue(Action proc) {
+        private void Enqueue(Action proc) {
             var job = new Job(proc);
             Enqueue(job);
         }
 
-        public Loop() {
-            _workingQueue = new BlockingCollection<IJob>();
-            Scheduler = new TimerScheduler();
-        }
-
+        /// <summary>
+        ///     主循环
+        /// </summary>
         public void Run() {
-            Scheduler.Start();
             _watch.Start();
 
             while (!_quit) {
-                var periodCounter = StopWatchDivider;
-                var tick = Environment.TickCount;
+                // 1、 定时器调度
+                TimerMgr.Update(ElapsedMilliseconds);
 
-                var t1 = _watch.ElapsedMilliseconds;
-
+                // 2、 job调度
+                var enterTime = ElapsedMilliseconds;
                 do {
                     try {
                         IJob item;
                         if (_workingQueue.TryTake(out item, Period)) {
                             item.Do();
-                            periodCounter--;
-
-                            if (periodCounter >= 1) continue;
-                            if (_watch.ElapsedMilliseconds - t1 >= Period) {
-                                break;
-                            }
-                            periodCounter = StopWatchDivider;
                         }
                         else
                             break;
@@ -171,20 +160,8 @@ namespace mom {
                     catch (Exception ex) {
                         Logger.Ins.Fatal("{0} : {1}", ex.Message, ex.StackTrace);
                     }
-                } while (Environment.TickCount - tick < Period);
-
-                WiElapsed = _watch.ElapsedMilliseconds - t1;
-                var t2 = _watch.ElapsedMilliseconds;
-                try {
-                    Idle?.Invoke();
-                }
-                catch (Exception ex) {
-                    Logger.Ins.Fatal($"{ex.Message} : {ex.StackTrace}");
-                }
-
-                IdleCallbackElapsed = _watch.ElapsedMilliseconds - t2;
+                } while (ElapsedMilliseconds - enterTime < Period);
             }
-
 
             IJob leftItem;
             while (_workingQueue.TryTake(out leftItem, Period*10)) {
@@ -196,7 +173,6 @@ namespace mom {
 
         public void Stop() {
             _quit = true;
-            Scheduler.Stop();
         }
     }
 }

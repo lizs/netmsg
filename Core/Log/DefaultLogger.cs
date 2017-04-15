@@ -73,8 +73,7 @@ namespace mom {
         }
 
         public void Exception(string msg, Exception e) {
-            Console.WriteLine("{0}:{1}:{2}", msg, e.InnerException != null ? e.InnerException.Message : e.Message,
-                e.StackTrace);
+            Console.WriteLine($"{msg}:{e.InnerException?.Message ?? e.Message}:{e.StackTrace}");
         }
 
         public void Shutdown() {}

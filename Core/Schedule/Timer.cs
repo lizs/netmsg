@@ -32,13 +32,9 @@ namespace mom {
     ///     A timer class base on Linux style timer scheduler.
     /// </summary>
     public sealed class Timer {
-        private readonly TimerScheduler _scheduler;
-
         /// <summary>
         ///     Construct a new timer object.
         /// </summary>
-        /// <param name="service"></param>
-        /// <param name="name">the timer's name</param>
         /// <param name="dueTime">
         ///     when to begin this timer, in milliseconds.
         ///     zero means start immediately
@@ -55,15 +51,12 @@ namespace mom {
         /// <summary>
         ///     Construct a new timer object.
         /// </summary>
-        /// <param name="service"></param>
-        /// <param name="name">the timer's name</param>
         /// <param name="dueTime">
         ///     when to begin this timer, in milliseconds.
         ///     zero means start immediately
         /// </param>
         public Timer(uint dueTime) {
             DueTime = dueTime;
-            _scheduler = Loop.Instance.Scheduler;
         }
 
         /// <summary>
@@ -83,7 +76,7 @@ namespace mom {
 
         /// <summary>
         ///     Call the timer's callback events.
-        ///     This method is called by <c>TimerScheduler</c> class only.
+        ///     This method is called by <c>TimerManager</c> class only.
         /// </summary>
         internal void Trigger() {
             if (Arrived == null) return;
@@ -107,14 +100,14 @@ namespace mom {
 
         /// <summary>
         ///     The expire time.
-        ///     this property only be used by <c>TimerScheduler</c> class.
+        ///     this property only be used by <c>TimerManager</c> class.
         /// </summary>
         internal long Expires { get; set; }
 
         /// <summary>
         ///     When timer is started, it's put in queue, this property is
         ///     the queue entry for this timer object.
-        ///     this property only be used by <c>TimerScheduler</c> class.
+        ///     this property only be used by <c>TimerManager</c> class.
         /// </summary>
         internal QueueEntry Entry { get; set; }
 
@@ -127,7 +120,7 @@ namespace mom {
         ///     Start the timer.
         /// </summary>
         public void Start() {
-            _scheduler.Add(this);
+            Loop.Instance.QueueTimer(this);
         }
 
         /// <summary>
@@ -135,8 +128,8 @@ namespace mom {
         /// </summary>
         public void Stop() {
             State = null;
-            _scheduler.Remove(this);
             Arrived = null;
+            Loop.Instance.DequeueTimer(this);
         }
     }
 }

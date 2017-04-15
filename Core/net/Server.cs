@@ -45,15 +45,13 @@ namespace mom {
         private Socket _listener;
         private SocketAsyncEventArgs _acceptEvent;
 
-        public Action<Session, byte[]> PushHandler { get; set; } = null;
-        public Action<Session, byte[], Action<ushort, byte[]>> RequestHandler { get; set; } = null;
-        public Action<Session, SessionCloseReason> CloseHandler { get; set; } = null;
-        public Action<Session> OpenHandler { get; set; } = null;
+        private readonly IHandler _handler;
 
-        public Server(string ip, int port) {
+        public Server(string ip, int port, IHandler handler = null) {
             Ip = ip;
             Port = port;
 
+            _handler = new InternalHandler(handler ?? new DefaultHandler());
             IPAddress address;
             if (!IPAddress.TryParse(Ip, out address))
                 Logger.Ins.Fatal("Invalid ip {0}", Ip);
@@ -105,19 +103,7 @@ namespace mom {
                 Stop();
             }
             else {
-                var session = new Session(sock, ++_sessionIdSeed) {
-                    OpenHandler = s => {
-                        Logger.Ins.Info("{0}:{1} connected!", Name, s.Name);
-                        OpenHandler?.Invoke(s);
-                    },
-                    CloseHandler = (s, reason) => {
-                        Logger.Ins.Info("{0}:{1} disconnected by {2}", Name, s.Name, reason);
-                        CloseHandler?.Invoke(s, reason);
-                    },
-                    PushHandler = PushHandler,
-                    RequestHandler = RequestHandler
-                };
-
+                var session = new Session(sock, ++_sessionIdSeed, _handler);
                 if (SessionMgr.AddSession(session)) {
                     session.Start();
                 }

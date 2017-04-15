@@ -28,74 +28,48 @@
 using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading.Tasks;
 
 namespace mom {
     /// <summary>
     /// </summary>
     public sealed class Client {
-        /// <summary>
-        ///     Default reconnect retry delay time
-        /// </summary>
-        public const uint ReconnectDelay = 1000;
-
-        /// <summary>
-        ///     Default reconnect retry max delay time
-        /// </summary>
-        public const uint ReconnectMaxDelay = 32*1000;
-        
         public string Name => $"{Ip}:{Port}";
 
         public string Ip { get; private set; }
         public int Port { get; private set; }
         public IPAddress Address { get; private set; }
         public EndPoint EndPoint { get; private set; }
-
-        public bool Connected {
-            get { return _connected; }
-            private set {
-                _connected = value;
-                ReconnectRetryDelay = _connected
-                    ? ReconnectDelay
-                    : Math.Min(ReconnectMaxDelay, ReconnectRetryDelay*2);
-            }
-        }
-
-        /// <summary>
-        ///     是否在断开连接之后自动重连
-        /// </summary>
-        public bool AutoReconnectEnabled { get; set; }
-
-        /// <summary>
-        ///     重连重试延时
-        /// </summary>
-        private uint ReconnectRetryDelay { get; set; } = ReconnectDelay;
+        
+        private readonly IHandler _handler;
 
         private Socket _underlineSocket;
         public Session Session { get; private set; }
         private SocketAsyncEventArgs _connectEvent;
-        private bool _connected;
         private readonly Scheduler _scheduler = new Scheduler();
 
-        public Action<Session, byte[]> PushHandler { get; set; } = null;
-        public Action<Session, byte[], Action<ushort, byte[]>> RequestHandler { get; set; } = null;
-        public Action<Session, SessionCloseReason> CloseHandler { get; set; } = null;
-        public Action<Session> OpenHandler { get; set; } = null;
+        public uint ReconnectDelay { get; set; } = 2*1000;
 
-        public Client(string ip, int port,  bool autoReconnectEnabled = true) {
-            AutoReconnectEnabled = autoReconnectEnabled;
+        public Client(string ip, int port, IHandler handler = null) {
+            _handler = new InternalHandler(handler ?? new DefaultHandler(), (reason) => {
+                if (reason != SessionCloseReason.Stop) {
+                    _reconnect();
+                }
+            });
 
             if (string.IsNullOrEmpty(ip) || port == 0)
                 Logger.Ins.Warn("Ip or Port is invalid!");
             else if (!SetAddress(ip, port))
                 throw new Exception("Ip or Port is invalid!");
         }
-        
+
+        private void _reconnect() {
+            _scheduler.Invoke(Reconnect, ReconnectDelay);
+        }
+
         private void OnError(string msg) {
             Logger.Ins.Error("{0}:{1}", Name, msg);
-
-            if (AutoReconnectEnabled) {
-                _scheduler.Invoke(Reconnect, ReconnectRetryDelay);
-            }
+            _reconnect();
         }
 
         public bool SetAddress(string ip, int port) {
@@ -158,22 +132,7 @@ namespace mom {
         }
 
         private void HandleConnection(Socket sock) {
-            Session = new Session(sock, 0) {
-                RequestHandler = RequestHandler,
-                PushHandler = PushHandler,
-                OpenHandler = session => {
-                    Logger.Ins.Info("{0}:{1} connected!", Name, session.Name);
-                    OpenHandler?.Invoke(session);
-                },
-                CloseHandler = (session, reason) => {
-                    Logger.Ins.Info("{0}:{1} disconnected by {2}", Name, session.Name, reason);
-                    if (AutoReconnectEnabled && reason != SessionCloseReason.Stop) {
-                        _scheduler.Invoke(Reconnect, ReconnectRetryDelay);
-                    }
-                    CloseHandler?.Invoke(session, reason);
-                }
-            };
-
+            Session = new Session(sock, 0, _handler);
             Session.Start();
         }
 
