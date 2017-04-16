@@ -93,7 +93,6 @@ namespace mom {
         public ushort Id { get; }
         public string Name => $"{GetType().Name}:{Id}";
         public Socket UnderlineSocket { get; private set; }
-        private readonly object _receiveLock = new object();
 
         public const ushort PackageMaxSize = 4*1024;
         public const ushort ReceiveBufferSize = 8*1024;
@@ -399,10 +398,8 @@ namespace mom {
                 Close(SessionCloseReason.ReadError);
                 return;
             }
-
-            lock (_receiveLock) {
-                ProcessReceive();
-            }
+            
+            ProcessReceive();
         }
     }
 }
