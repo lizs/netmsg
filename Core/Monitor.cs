@@ -4,7 +4,7 @@ namespace mom {
     public sealed class Monitor {
         private const uint Period = 5*1000;
 
-        public static Monitor Instance { get; } = new Monitor();
+        public static Monitor Ins { get; } = new Monitor();
 
         public void Start() {
             _scheduler.Invoke(Dump, Period, Period);
@@ -16,8 +16,8 @@ namespace mom {
 
         private void Dump()
         {
-            Logger.Ins.Info(
-                $"Write : {Wroted * 1000 / Period}/s Read : {Readed * 1000 / Period}/s Jobs : {Loop.Instance.Jobs}");
+            Logger.Ins.Debug(
+                $"Write : {Wroted * 1000 / Period}/s Read : {Readed * 1000 / Period}/s Jobs : {Loop.Ins.Jobs}");
 
             Wroted = 0;
             Interlocked.Exchange(ref Readed, 0);

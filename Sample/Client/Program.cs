@@ -29,7 +29,6 @@ using System;
 using System.Text;
 using System.Threading.Tasks;
 using mom;
-using Monitor = mom.Monitor;
 
 namespace Sample {
     internal class Program {
@@ -52,19 +51,20 @@ namespace Sample {
                 run_client();
             }
 
-            Monitor.Instance.Start();
+            Monitor.Ins.Start();
 
             // 创建并启动Launcher
-            Loop.Instance.Run();
+            Loop.Ins.Run();
 
-            Monitor.Instance.Stop();
+            Monitor.Ins.Stop();
             // 销毁客户端
             _client?.Stop();
             _server?.Stop();
         }
 
-        private class ClientHandler : DefaultHandler {
+        private class ClientHandler : DefaultDispatcher {
             private static readonly byte[] Data = Encoding.ASCII.GetBytes("Hello world!");
+            private static readonly Scheduler _scheduler = new Scheduler();
             private static void Push(Session session) {
                 session.Push(Data, b => {
                     if (b)
@@ -74,15 +74,24 @@ namespace Sample {
                 });
             }
 
-            private static async Task<bool> Request(Session session) {
-                while (true) {
-                    var ret = await session.Request(Data);
-                    return await Request(session);
-                }
+            private static async Task<bool> Request2(Session session) {
+                await session.Request(Data);
+                Loop.Ins.Perform(() => { Request2(session); });
+                return true;
+            }
+
+            private static void Request1(Session session) {
+                session.Request(Data, (err, bytes) => {
+                    Request1(session);
+                });
             }
 
             public override void OnOpen(Session session) {
-                Request(session);
+                // request with callback
+                Request1(session);
+
+                // or awaitable request
+                //Request2(session);
 
                 // or push
                 //Push(session);
@@ -91,7 +100,7 @@ namespace Sample {
 
         private static void run_client() {
             // 创建并启动客户端
-            _client = new Client("127.0.0.1", 5002, new ClientHandler()); 
+            _client = new Client("127.0.0.1", 5002, new ClientHandler());
             _client.Start();
         }
 

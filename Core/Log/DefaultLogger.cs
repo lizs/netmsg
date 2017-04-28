@@ -36,11 +36,19 @@ namespace mom {
             Console.WriteLine(message);
         }
 
+        public void Debug(string message) {
+            Console.WriteLine(message);
+        }
+
         public void Debug(string format, params object[] args) {
             Console.WriteLine(format, args);
         }
 
         public void Error(object message) {
+            Console.WriteLine(message);
+        }
+
+        public void Error(string message) {
             Console.WriteLine(message);
         }
 
@@ -52,6 +60,10 @@ namespace mom {
             Console.WriteLine(message);
         }
 
+        public void Fatal(string message) {
+            Console.WriteLine(message);
+        }
+
         public void Fatal(string format, params object[] args) {
             Console.WriteLine(format, args);
         }
@@ -60,11 +72,19 @@ namespace mom {
             Console.WriteLine(message);
         }
 
+        public void Info(string message) {
+            Console.WriteLine(message);
+        }
+
         public void Info(string format, params object[] args) {
             Console.WriteLine(format, args);
         }
 
         public void Warn(object message) {
+            Console.WriteLine(message);
+        }
+
+        public void Warn(string message) {
             Console.WriteLine(message);
         }
 
@@ -77,9 +97,10 @@ namespace mom {
         }
 
         public void Shutdown() {}
+        public void Startup(){}
     }
 
     public class Logger {
-        public static ILog Ins { get; } = new DefaultLogger();
+        public static ILog Ins { get; set; } = new DefaultLogger();
     }
 }

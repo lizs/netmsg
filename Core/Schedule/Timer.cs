@@ -120,7 +120,7 @@ namespace mom {
         ///     Start the timer.
         /// </summary>
         public void Start() {
-            Loop.Instance.QueueTimer(this);
+            Loop.Ins.QueueTimer(this);
         }
 
         /// <summary>
@@ -129,7 +129,7 @@ namespace mom {
         public void Stop() {
             State = null;
             Arrived = null;
-            Loop.Instance.DequeueTimer(this);
+            Loop.Ins.DequeueTimer(this);
         }
     }
 }

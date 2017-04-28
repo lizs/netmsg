@@ -45,13 +45,13 @@ namespace mom {
         private Socket _listener;
         private SocketAsyncEventArgs _acceptEvent;
 
-        private readonly IHandler _handler;
+        private readonly IDispatcher _dispatcher;
 
-        public Server(string ip, int port, IHandler handler = null) {
+        public Server(string ip, int port, IDispatcher dispatcher = null) {
             Ip = ip;
             Port = port;
 
-            _handler = new InternalHandler(handler ?? new DefaultHandler());
+            _dispatcher = new InternalDispatcher(dispatcher ?? new DefaultDispatcher());
             IPAddress address;
             if (!IPAddress.TryParse(Ip, out address))
                 Logger.Ins.Fatal("Invalid ip {0}", Ip);
@@ -90,7 +90,7 @@ namespace mom {
             _listener.Close();
             _acceptEvent?.Dispose();
             
-            Logger.Ins.Info("Server stopped!");
+            Logger.Ins.Debug("Server stopped!");
         }
 
         private void OnAcceptCompleted(object sender, SocketAsyncEventArgs e) {
@@ -103,7 +103,7 @@ namespace mom {
                 Stop();
             }
             else {
-                var session = new Session(sock, ++_sessionIdSeed, _handler);
+                var session = new Session(sock, ++_sessionIdSeed, _dispatcher);
                 if (SessionMgr.AddSession(session)) {
                     session.Start();
                 }

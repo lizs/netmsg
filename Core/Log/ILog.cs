@@ -35,6 +35,10 @@ namespace mom
         ///     Log as debug level
         /// </summary>
         void Debug(object message);
+        /// <summary>
+        ///     Log as debug level
+        /// </summary>
+        void Debug(string message);
 
         /// <summary>
         ///     Log as debug level
@@ -45,6 +49,7 @@ namespace mom
         ///     Log as error level
         /// </summary>
         void Error(object message);
+        void Error(string message);
 
         /// <summary>
         ///     Log as error level
@@ -55,6 +60,7 @@ namespace mom
         ///     Log as fatal level
         /// </summary>
         void Fatal(object message);
+        void Fatal(string message);
 
         /// <summary>
         ///     Log as fatal level
@@ -65,6 +71,7 @@ namespace mom
         ///     Log as information level
         /// </summary>
         void Info(object message);
+        void Info(string message);
 
         /// <summary>
         ///     Log as information level
@@ -75,6 +82,7 @@ namespace mom
         ///     Log as warnning level
         /// </summary>
         void Warn(object message);
+        void Warn(string message);
 
         /// <summary>
         ///     Log as warnning level

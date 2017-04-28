@@ -72,13 +72,33 @@ namespace mom {
     public enum NetError
     {
         Success = 0,
+        ExceptionCatched,
         Write,
         Read,
+        RequestDataIsEmpty,
         SerialConflict,
         NoHandler,
         ReadErrorNo,
         SessionClosed,
         End
+    }
+
+    public class Result
+    {
+        public ushort Err { get; }
+        public byte[] Data { get; }
+
+        public Result(ushort err, byte[] data)
+        {
+            Err = err;
+            Data = data;
+        }
+
+        public Result(ushort err)
+        {
+            Err = err;
+            Data = null;
+        }
     }
 
     public class Session {
@@ -93,6 +113,7 @@ namespace mom {
         public ushort Id { get; }
         public string Name => $"{GetType().Name}:{Id}";
         public Socket UnderlineSocket { get; private set; }
+        public object UserData { get; set; }
 
         public const ushort PackageMaxSize = 4*1024;
         public const ushort ReceiveBufferSize = 8*1024;
@@ -107,18 +128,18 @@ namespace mom {
         private Packer _packer;
 
         // 请求池
-        private readonly Dictionary<ushort, Action<ushort, byte[]>> _requests =
-            new Dictionary<ushort, Action<ushort, byte[]>>();
+        private readonly Dictionary<ushort, Action<Result>> _requests =
+            new Dictionary<ushort, Action<Result>>();
 
         private ushort _serialSeed;
         private volatile int _active;
-        private readonly IHandler _handler;
+        private readonly IDispatcher _dispatcher;
 
-        public Session(Socket socket, ushort id, IHandler handler = null) {
+        public Session(Socket socket, ushort id, IDispatcher dispatcher = null) {
             UnderlineSocket = socket;
             Id = id;
 
-            _handler = handler ?? new DefaultHandler();
+            _dispatcher = dispatcher ?? new DefaultDispatcher();
 
             _receiveBuffer = new CircularBuffer(ReceiveBufferSize);
             _packer = new Packer(PackageMaxSize);
@@ -131,7 +152,7 @@ namespace mom {
             if (_active == 0) return;
             Interlocked.Exchange(ref _active, 0);
 
-            _handler.OnClose(this, reason);
+            _dispatcher.OnClose(this, reason);
 
             if (UnderlineSocket.Connected)
                 UnderlineSocket.Shutdown(SocketShutdown.Both);
@@ -144,7 +165,7 @@ namespace mom {
             _receiveBuffer = null;
             _packer = null;
 
-            Logger.Ins.Info("Session closed");
+            Logger.Ins.Debug("Session closed");
         }
 
         /// <summary>
@@ -152,26 +173,39 @@ namespace mom {
         /// </summary>
         /// <param name="data"></param>
         /// <returns></returns>
-        public async Task<Tuple<ushort, byte[]>> Request(byte[] data) {
-            var tcs = new TaskCompletionSource<Tuple<ushort, byte[]>>();
-            try {
-                Request(data, (error, bytes) => {
-                    if (!tcs.TrySetResult(new Tuple<ushort, byte[]>(error, bytes))) {
+        public async Task<Result> Request(byte[] data)
+        {
+            var tcs = new TaskCompletionSource<Result>();
+            try
+            {
+                Request(data, ret =>
+                {
+                    if (!tcs.TrySetResult(ret))
+                    {
                         Logger.Ins.Error("TrySetResult failed");
                     }
                 });
             }
-            catch (Exception ex) {
+            catch (Exception ex)
+            {
                 tcs.SetException(ex);
             }
 
             return await tcs.Task;
         }
 
-        public void Request(byte[] data, Action<ushort, byte[]> cb) {
+        public void Request(byte[] data, Action<Result> cb)
+        {
+            if (data.IsNullOrEmpty())
+            {
+                cb?.Invoke(new Result((ushort) NetError.RequestDataIsEmpty));
+                return;
+            }
+
             ++_serialSeed;
-            if (_requests.ContainsKey(_serialSeed)) {
-                cb?.Invoke((ushort) NetError.SerialConflict, null);
+            if (_requests.ContainsKey(_serialSeed))
+            {
+                cb?.Invoke(new Result((ushort) NetError.SerialConflict));
                 return;
             }
 
@@ -188,13 +222,13 @@ namespace mom {
                 Send(ms.ToArray(), b => {
                     if (!b)
                     {
-                        cb?.Invoke((ushort)NetError.Write, null);
+                        cb?.Invoke(new Result((ushort)NetError.Write));
                     }
                 });
             }
         }
 
-        public void Push(byte[] data, Action<bool> cb) {
+        public void Push(byte[] data, Action<bool> cb = null) {
             using (var ms = new MemoryStream())
             using (var bw = new BinaryWriter(ms)) {
                 bw.Write((ushort)((data.IsNullOrEmpty() ? 0 : data.Length) + PatternSize));
@@ -240,7 +274,7 @@ namespace mom {
             }
 
             try {
-                var e = SocketAsyncEventArgsPool.Instance.Pop();
+                var e = SocketAsyncEventArgsPool.Ins.Pop();
                 e.Completed += OnSendCompleted;
                 e.SetBuffer(data, 0, data.Length);
                 e.UserToken = cb;
@@ -254,7 +288,7 @@ namespace mom {
                 }
 
                 e.Completed -= OnSendCompleted;
-                SocketAsyncEventArgsPool.Instance.Push(e);
+                SocketAsyncEventArgsPool.Ins.Push(e);
             }
             catch (ObjectDisposedException e) {
                 Logger.Ins.Warn("Socket already closed! detail : {0}", e.StackTrace);
@@ -273,9 +307,9 @@ namespace mom {
             }
 
             e.Completed -= OnSendCompleted;
-            SocketAsyncEventArgsPool.Instance.Push(e);
+            SocketAsyncEventArgsPool.Ins.Push(e);
 
-            Monitor.Instance.IncWroted();
+            Monitor.Ins.IncWroted();
         }
 
         private void WakeupReceive() {
@@ -286,7 +320,7 @@ namespace mom {
             Interlocked.Exchange(ref _active, 1);
             // 投递首次接受请求
             WakeupReceive();
-            _handler.OnOpen(this);
+            _dispatcher.OnOpen(this);
         }
 
         private void ProcessReceive() {
@@ -312,7 +346,7 @@ namespace mom {
 
             // 包处理放在Loop线程
             // 因为Timer也是在Loop线程
-            Loop.Instance.Perform(() => {
+            Loop.Ins.Perform(() => {
                 while (_packer.Packages.Count > 0) {
                     try {
                         Dispatch();
@@ -335,7 +369,7 @@ namespace mom {
             var cb = _requests[serial];
             _requests.Remove(serial);
 
-            cb?.Invoke(err, data);
+            cb?.Invoke(new Result(err, data));
         }
 
         private async Task<bool> Dispatch() {
@@ -348,14 +382,20 @@ namespace mom {
                 left -= PatternSize;
                 switch (pattern) {
                     case Pattern.Push:
-                        _handler.OnPush(this, br.ReadBytes(left));
+                        _dispatcher.OnPush(this, br.ReadBytes(left));
                         break;
 
                     case Pattern.Request: {
                         var serial = br.ReadUInt16();
                         left -= SerialSize;
-                        var ret = await _handler.OnRequest(this, br.ReadBytes(left));
-                        Response(ret.Item1, serial, ret.Item2, null);
+                        try {
+                            var ret = await _dispatcher.OnRequest(this, br.ReadBytes(left));
+                            Response(ret.Err, serial, ret.Data, null);
+                        }
+                        catch (Exception e) {
+                            Logger.Ins.Exception("Session::Dispatch", e);
+                            Response((ushort) NetError.ExceptionCatched, serial, null, null);
+                        }
                         break;
                     }
 
@@ -381,7 +421,7 @@ namespace mom {
                 }
             }
 
-            Monitor.Instance.IncReaded();
+            Monitor.Ins.IncReaded();
             return true;
         }
 

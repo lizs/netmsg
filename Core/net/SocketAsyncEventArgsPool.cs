@@ -3,7 +3,7 @@ using System.Net.Sockets;
 
 namespace mom {
     public class SocketAsyncEventArgsPool {
-        public static SocketAsyncEventArgsPool Instance { get; } = new SocketAsyncEventArgsPool();
+        public static SocketAsyncEventArgsPool Ins { get; } = new SocketAsyncEventArgsPool();
 
         public const ushort Capacity = 128;
 

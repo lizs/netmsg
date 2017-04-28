@@ -36,7 +36,7 @@ namespace mom {
     ///     2、提供定时调度、协程调度服务
     /// </summary>
     public sealed class Loop {
-        public static Loop Instance { get; } = new Loop();
+        public static Loop Ins { get; } = new Loop();
 
         private bool _quit;
         private readonly Stopwatch _watch = new Stopwatch();

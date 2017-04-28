@@ -81,9 +81,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Monitor.cs" />
-    <Compile Include="net\IHandler.cs" />
+    <Compile Include="net\IDispatcher.cs" />
     <Compile Include="net\SocketAsyncEventArgsPool.cs" />
-    <Compile Include="util\TaskHelper.cs" />
     <Compile Include="Log\DefaultLogger.cs" />
     <Compile Include="Log\ILog.cs" />
     <Compile Include="schedule\Scheduler.cs" />
@@ -106,7 +105,8 @@
   <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
-    <PostBuildEvent>copy "$(ProjectDir)$(OutDir)*.dll" "$(SolutionDir)Publish"</PostBuildEvent>
+    <PostBuildEvent>xcopy "$(TargetDir)$(TargetFileName)" "$(SolutionDir)publish" /Y
+xcopy "$(TargetDir)$(TargetName).pdb" "$(SolutionDir)publish" /Y</PostBuildEvent>
   </PropertyGroup>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

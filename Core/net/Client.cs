@@ -28,7 +28,6 @@
 using System;
 using System.Net;
 using System.Net.Sockets;
-using System.Threading.Tasks;
 
 namespace mom {
     /// <summary>
@@ -41,7 +40,7 @@ namespace mom {
         public IPAddress Address { get; private set; }
         public EndPoint EndPoint { get; private set; }
         
-        private readonly IHandler _handler;
+        private readonly IDispatcher _dispatcher;
 
         private Socket _underlineSocket;
         public Session Session { get; private set; }
@@ -50,8 +49,8 @@ namespace mom {
 
         public uint ReconnectDelay { get; set; } = 2*1000;
 
-        public Client(string ip, int port, IHandler handler = null) {
-            _handler = new InternalHandler(handler ?? new DefaultHandler(), (reason) => {
+        public Client(string ip, int port, IDispatcher dispatcher = null) {
+            _dispatcher = new InternalDispatcher(dispatcher ?? new DefaultDispatcher(), (reason) => {
                 if (reason != SessionCloseReason.Stop) {
                     _reconnect();
                 }
@@ -107,6 +106,7 @@ namespace mom {
             _connectEvent.Dispose();
             _underlineSocket.Close();
             Session.Close(SessionCloseReason.Stop);
+            Session = null;
 
             _underlineSocket = null;
             _connectEvent = null;
@@ -132,17 +132,21 @@ namespace mom {
         }
 
         private void HandleConnection(Socket sock) {
-            Session = new Session(sock, 0, _handler);
+            Session = new Session(sock, 0, _dispatcher);
             Session.Start();
         }
 
         private void OnConnectCompleted(object sender, SocketAsyncEventArgs e) {
-            if (e.SocketError == SocketError.Success)
-                HandleConnection(_underlineSocket);
-            else {
-                var msg = $"Connection failed, detail {e.SocketError}";
-                OnError(msg);
-            }
+            Loop.Ins.Perform(() =>
+            {
+                if (e.SocketError == SocketError.Success)
+                    HandleConnection(_underlineSocket);
+                else
+                {
+                    var msg = $"Connection failed, detail {e.SocketError}";
+                    OnError(msg);
+                }
+            });
         }
     }
 }
