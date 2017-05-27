@@ -1,4 +1,5 @@
 ﻿#region MIT
+
 //  /*The MIT License (MIT)
 // 
 //  Copyright 2016 lizs lizs4ever@163.com
@@ -21,7 +22,10 @@
 //  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 //  THE SOFTWARE.
 //   * */
+
 #endregion
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -39,6 +43,31 @@ namespace mom
                 return collection.Count == 0;
 
             return !enumerable.Any();
+        }
+
+        public static IEnumerable<TValue> RandomValues<TKey, TValue>(this IDictionary<TKey, TValue> dict)
+        {
+            var rand = new Random();
+            var values = dict.Values.ToList();
+            var size = dict.Count;
+            while (true)
+            {
+                yield return values[rand.Next(size)];
+            }
+        }
+
+        public static TValue RandomValue<TKey, TValue>(this IDictionary<TKey, TValue> dict)
+        {
+            var rand = new Random();
+            var values = dict.Values.ToList();
+            return values[rand.Next(dict.Count)];
+        }
+
+        public static TKey RandomKey<TKey, TValue>(this IDictionary<TKey, TValue> dict)
+        {
+            var rand = new Random();
+            var keys = dict.Keys.ToList();
+            return keys[rand.Next(dict.Count)];
         }
     }
 }

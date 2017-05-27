@@ -5,7 +5,7 @@ VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "cluster", "Sample\Client\cluster.csproj", "{C5CD98E3-82B5-4E62-B19A-4B09FCAE3CAB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "mom", "Core\mom.csproj", "{ED0BB4A5-50C0-410F-A55F-94C842C744AC}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "net", "Core\net.csproj", "{ED0BB4A5-50C0-410F-A55F-94C842C744AC}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

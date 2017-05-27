@@ -27,6 +27,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text;
 
 namespace mom {
     public enum PackerError {
@@ -67,12 +69,39 @@ namespace mom {
             }
 
             error = ProcessBody(buffer);
-            switch (error) {
-                case PackerError.Success: {
+            switch (error)
+            {
+                case PackerError.Success:
+                {
                     packagesCnt++;
                     Packages.Enqueue(_body);
 
-                    Reset();
+#if MESSAGE_TRACK_ENABLED
+                    var bytes = new byte[2];
+                    using (var ms = new MemoryStream(bytes))
+                    using (var bw = new BinaryWriter(ms))
+                    {
+                        bw.Write(_packageLen);
+                    }
+
+                    var sb = new StringBuilder();
+                    sb.AppendFormat($"Read [ ");
+
+                    foreach (var b in bytes)
+                    {
+                        sb.Append($"{b.ToString("X2")} ");
+                    }
+
+                    foreach (var b in _body)
+                    {
+                        sb.Append($"{b.ToString("X2")} ");
+                    }
+
+                    sb.Append("]");
+                    Logger.Ins.Debug(sb.ToString());
+#endif
+
+                        Reset();
 
                     return Process(buffer, ref packagesCnt);
                 }
@@ -91,7 +120,7 @@ namespace mom {
 
         private PackerError ProcessHeader(CircularBuffer buffer) {
             if (buffer.ReadableSize < HearderLen) return PackerError.Running;
-
+            
             var one = buffer.Buffer[buffer.Head];
             var two = buffer.Buffer[buffer.Head + 1];
 

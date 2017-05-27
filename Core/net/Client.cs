@@ -29,17 +29,19 @@ using System;
 using System.Net;
 using System.Net.Sockets;
 
-namespace mom {
+namespace mom
+{
     /// <summary>
     /// </summary>
-    public sealed class Client {
+    public sealed class Client
+    {
         public string Name => $"{Ip}:{Port}";
 
         public string Ip { get; private set; }
         public int Port { get; private set; }
         public IPAddress Address { get; private set; }
         public EndPoint EndPoint { get; private set; }
-        
+
         private readonly IDispatcher _dispatcher;
 
         private Socket _underlineSocket;
@@ -49,9 +51,14 @@ namespace mom {
 
         public uint ReconnectDelay { get; set; } = 2*1000;
 
-        public Client(string ip, int port, IDispatcher dispatcher = null) {
-            _dispatcher = new InternalDispatcher(dispatcher ?? new DefaultDispatcher(), (reason) => {
-                if (reason != SessionCloseReason.Stop) {
+        private bool _stopped;
+
+        public Client(string ip, int port, IDispatcher dispatcher = null)
+        {
+            _dispatcher = new InternalDispatcher(dispatcher ?? new DefaultDispatcher(), reason =>
+            {
+                if (!_stopped)
+                {
                     _reconnect();
                 }
             });
@@ -62,24 +69,29 @@ namespace mom {
                 throw new Exception("Ip or Port is invalid!");
         }
 
-        private void _reconnect() {
+        private void _reconnect()
+        {
             _scheduler.Invoke(Reconnect, ReconnectDelay);
         }
 
-        private void OnError(string msg) {
+        private void OnError(string msg)
+        {
             Logger.Ins.Error("{0}:{1}", Name, msg);
             _reconnect();
         }
 
-        public bool SetAddress(string ip, int port) {
+        public bool SetAddress(string ip, int port)
+        {
             Ip = ip;
             Port = port;
 
-            try {
+            try
+            {
                 Address = IPAddress.Parse(Ip);
                 EndPoint = new IPEndPoint(Address, Port);
             }
-            catch (Exception e) {
+            catch (Exception e)
+            {
                 var msg = $"{e.Message} : {e.StackTrace}";
                 OnError(msg);
 
@@ -91,7 +103,8 @@ namespace mom {
             return true;
         }
 
-        public void Start() {
+        public void Start()
+        {
             if (string.IsNullOrEmpty(Ip) || Port == 0)
                 throw new Exception("Address must be setted before start!");
 
@@ -100,43 +113,55 @@ namespace mom {
 
             _underlineSocket = SocketExt.CreateTcpSocket();
             Connect();
+
+            _stopped = false;
         }
 
-        public void Stop() {
+        public void Stop()
+        {
+            _stopped = true;
+
             _connectEvent.Dispose();
             _underlineSocket.Close();
+
             Session.Close(SessionCloseReason.Stop);
             Session = null;
 
             _underlineSocket = null;
             _connectEvent = null;
+
             Logger.Ins.Debug("Client stopped!");
         }
 
 
-        public void Reconnect() {
-            _underlineSocket = SocketExt.CreateTcpSocket();
-            Connect();
+        public void Reconnect()
+        {
+            Start();
         }
 
-        public void Connect() {
+        public void Connect()
+        {
             _connectEvent.RemoteEndPoint = EndPoint;
-            try {
+            try
+            {
                 if (!_underlineSocket.ConnectAsync(_connectEvent))
                     HandleConnection(_underlineSocket);
             }
-            catch (Exception e) {
+            catch (Exception e)
+            {
                 var msg = $"Connection failed, detail {e.Message} : {e.StackTrace}";
                 OnError(msg);
             }
         }
 
-        private void HandleConnection(Socket sock) {
+        private void HandleConnection(Socket sock)
+        {
             Session = new Session(sock, 0, _dispatcher);
             Session.Start();
         }
 
-        private void OnConnectCompleted(object sender, SocketAsyncEventArgs e) {
+        private void OnConnectCompleted(object sender, SocketAsyncEventArgs e)
+        {
             Loop.Ins.Perform(() =>
             {
                 if (e.SocketError == SocketError.Success)

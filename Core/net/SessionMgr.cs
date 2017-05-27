@@ -28,29 +28,44 @@
 using System.Collections.Concurrent;
 using System.Linq;
 
-namespace mom {
-    public class SessionMgr {
+namespace mom
+{
+    public class SessionMgr
+    {
         private readonly ConcurrentDictionary<ushort, Session> _items = new ConcurrentDictionary<ushort, Session>();
 
-        public void Stop() {
+        public void Stop()
+        {
             Clear();
         }
 
-        public bool AddSession(Session session) {
+        public bool AddSession(Session session)
+        {
             return _items.TryAdd(session.Id, session);
         }
 
-        public bool RemoveSession(ushort id, SessionCloseReason reason) {
+        public bool RemoveSession(ushort id, SessionCloseReason reason)
+        {
             Session session;
             return _items.TryRemove(id, out session);
         }
 
-        public void Clear() {
-            foreach (var session in _items.Select(x => x.Value)) {
+        public void Clear()
+        {
+            foreach (var session in _items.Select(x => x.Value))
+            {
                 session.Close(SessionCloseReason.Stop);
             }
 
             _items.Clear();
+        }
+
+        /// <summary>
+        ///     广播
+        /// </summary>
+        public void Broadcast(byte[] data)
+        {
+            Session.Broadcast(_items.Values.ToArray(), data);
         }
     }
 }

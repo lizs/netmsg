@@ -29,8 +29,10 @@ using System;
 using System.Net;
 using System.Net.Sockets;
 
-namespace mom {
-    public sealed class Server {
+namespace mom
+{
+    public sealed class Server
+    {
         private const int DefaultBacktrace = 10;
         private ushort _sessionIdSeed;
         public int Port { get; }
@@ -47,7 +49,8 @@ namespace mom {
 
         private readonly IDispatcher _dispatcher;
 
-        public Server(string ip, int port, IDispatcher dispatcher = null) {
+        public Server(string ip, int port, IDispatcher dispatcher = null)
+        {
             Ip = ip;
             Port = port;
 
@@ -61,18 +64,22 @@ namespace mom {
 
             SessionMgr = new SessionMgr();
         }
-        
-        private void OnError(string msg) {
+
+        private void OnError(string msg)
+        {
             Logger.Ins.Error("{0}:{1}", Name, msg);
         }
 
-        public void Start() {
-            try {
+        public void Start()
+        {
+            try
+            {
                 _listener = SocketExt.CreateTcpSocket();
                 _listener.Bind(EndPoint);
                 _listener.Listen(DefaultBacktrace);
             }
-            catch (Exception e) {
+            catch (Exception e)
+            {
                 OnError($"Server start failed, detail {e.Message} : {e.StackTrace}");
                 return;
             }
@@ -84,27 +91,33 @@ namespace mom {
             Logger.Ins.Debug("Server started on {0}:{1}", Ip, Port);
         }
 
-        public void Stop() {
+        public void Stop()
+        {
             SessionMgr.Stop();
 
             _listener.Close();
             _acceptEvent?.Dispose();
-            
+
             Logger.Ins.Debug("Server stopped!");
         }
 
-        private void OnAcceptCompleted(object sender, SocketAsyncEventArgs e) {
+        private void OnAcceptCompleted(object sender, SocketAsyncEventArgs e)
+        {
             ProcessAccept(e.AcceptSocket, e.SocketError);
         }
 
-        private void ProcessAccept(Socket sock, SocketError error) {
-            if (error != SocketError.Success) {
+        private void ProcessAccept(Socket sock, SocketError error)
+        {
+            if (error != SocketError.Success)
+            {
                 Logger.Ins.Error("Listener down!");
                 Stop();
             }
-            else {
+            else
+            {
                 var session = new Session(sock, ++_sessionIdSeed, _dispatcher);
-                if (SessionMgr.AddSession(session)) {
+                if (SessionMgr.AddSession(session))
+                {
                     session.Start();
                 }
 
@@ -112,19 +125,28 @@ namespace mom {
             }
         }
 
-        private void AcceptNext() {
+        private void AcceptNext()
+        {
             _acceptEvent.AcceptSocket = null;
 
-            try {
-                if (!_listener.AcceptAsync(_acceptEvent)) {
+            try
+            {
+                if (!_listener.AcceptAsync(_acceptEvent))
+                {
                     ProcessAccept(_acceptEvent.AcceptSocket, _acceptEvent.SocketError);
                 }
             }
-            catch (Exception e) {
+            catch (Exception e)
+            {
                 var msg = $"Accept failed, detail {e.Message} : {e.StackTrace}";
                 OnError(msg);
                 AcceptNext();
             }
+        }
+
+        public void Broadcast(byte[] data)
+        {
+            SessionMgr.Broadcast(data);
         }
     }
 }

@@ -16,7 +16,7 @@ namespace mom {
 
         private void Dump()
         {
-            Logger.Ins.Debug(
+            Logger.Ins.Info(
                 $"Write : {Wroted * 1000 / Period}/s Read : {Readed * 1000 / Period}/s Jobs : {Loop.Ins.Jobs}");
 
             Wroted = 0;
@@ -34,6 +34,6 @@ namespace mom {
         public int Readed = 0;
         public int Wroted { get; private set; } = 0;
 
-        private Scheduler _scheduler = new Scheduler();
+        private readonly Scheduler _scheduler = new Scheduler();
     }
 }

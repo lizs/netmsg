@@ -30,14 +30,19 @@ using System.Text;
 using System.Threading.Tasks;
 using mom;
 
-namespace Sample {
-    internal class Program {
+namespace Sample
+{
+    internal class Program
+    {
         private static Client _client;
         private static Server _server;
 
-        private static void Main(string[] args) {
-            if (args.Length > 0) {
-                switch (args[0]) {
+        private static void Main(string[] args)
+        {
+            if (args.Length > 0)
+            {
+                switch (args[0])
+                {
                     case "server":
                         run_server();
                         break;
@@ -47,7 +52,8 @@ namespace Sample {
                         break;
                 }
             }
-            else {
+            else
+            {
                 run_client();
             }
 
@@ -62,11 +68,15 @@ namespace Sample {
             _server?.Stop();
         }
 
-        private class ClientHandler : DefaultDispatcher {
+        private class MyDispatcher : DefaultDispatcher
+        {
             private static readonly byte[] Data = Encoding.ASCII.GetBytes("Hello world!");
             private static readonly Scheduler _scheduler = new Scheduler();
-            private static void Push(Session session) {
-                session.Push(Data, b => {
+
+            private static void Push(Session session)
+            {
+                session.Push(Data, b =>
+                {
                     if (b)
                         Push(session);
                     else
@@ -74,19 +84,20 @@ namespace Sample {
                 });
             }
 
-            private static async Task<bool> Request2(Session session) {
+            private static async Task<bool> Request2(Session session)
+            {
                 await session.Request(Data);
                 Loop.Ins.Perform(() => { Request2(session); });
                 return true;
             }
 
-            private static void Request1(Session session) {
-                session.Request(Data, (err, bytes) => {
-                    Request1(session);
-                });
+            private static void Request1(Session session)
+            {
+                session.Request(Data, ret => { Request1(session); });
             }
 
-            public override void OnOpen(Session session) {
+            public override void OnOpen(Session session)
+            {
                 // request with callback
                 Request1(session);
 
@@ -98,13 +109,15 @@ namespace Sample {
             }
         }
 
-        private static void run_client() {
+        private static void run_client()
+        {
             // 创建并启动客户端
-            _client = new Client("127.0.0.1", 5002, new ClientHandler());
+            _client = new Client("127.0.0.1", 5002, new MyDispatcher());
             _client.Start();
         }
 
-        private static void run_server() {
+        private static void run_server()
+        {
             // 创建并启动客户端
             _server = new Server("127.0.0.1", 5002);
             _server.Start();
