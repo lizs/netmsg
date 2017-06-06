@@ -1,6 +1,4 @@
-netmsg
-======================
-mom组件(https://git.oschina.net/lizs4ever/MOM.git)的C#实现
+#netmsg（[mom](https://git.oschina.net/lizs4ever/MOM.git)'s C# portion）
 
 ##Getting started
 ###Server
@@ -49,5 +47,6 @@ mom组件(https://git.oschina.net/lizs4ever/MOM.git)的C#实现
 ```
 
 ##Question
-QQ group ：http://jq.qq.com/?_wv=1027&k=VptNja
-<br>e-mail : lizs4ever@163.com
+QQ Group : [点击加入](http://jq.qq.com/?_wv=1027&k=VptNja)
+
+e-mail : lizs4ever@163.com
