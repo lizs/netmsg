@@ -113,11 +113,6 @@ namespace mom
         {
             return ret?.Err == 0;
         }
-
-        public override string ToString()
-        {
-            return $"Error : {Err} Data : {Data?.Length}";
-        }
     }
 
     public sealed class Session
@@ -478,7 +473,7 @@ namespace mom
                 _receiveBuffer.Arrange();
 
             // 包处理放在Loop线程
-            // 因为Timer也是在Loop线程
+            // Timer也在Loop线程
             Loop.Ins.Perform(() =>
             {
                 while (_packer?.Packages.Count > 0)
