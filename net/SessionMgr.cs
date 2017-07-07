@@ -25,7 +25,10 @@
 
 #endregion
 
+#if NET35
+#else
 using System.Collections.Concurrent;
+#endif
 using System.Linq;
 
 namespace mom
@@ -60,12 +63,12 @@ namespace mom
             _items.Clear();
         }
 
-        /// <summary>
-        ///     广播
-        /// </summary>
-        public void Broadcast(byte[] data)
-        {
-            Session.Broadcast(_items.Values.ToArray(), data);
-        }
+        ///// <summary>
+        /////     广播
+        ///// </summary>
+        //public void Broadcast(byte[] data)
+        //{
+        //    Session.Broadcast(_items.Values.ToArray(), data);
+        //}
     }
 }

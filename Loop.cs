@@ -26,8 +26,11 @@
 #endregion
 
 using System;
-using System.Collections.Concurrent;
 using System.Diagnostics;
+#if NET35
+#else
+using System.Collections.Concurrent;
+#endif
 
 namespace mom {
     /// <summary>

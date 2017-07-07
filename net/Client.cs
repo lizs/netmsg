@@ -26,6 +26,7 @@
 #endregion
 
 using System;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 
@@ -50,6 +51,8 @@ namespace mom
         private readonly Scheduler _scheduler = new Scheduler();
 
         public uint ReconnectDelay { get; set; } = 2*1000;
+        public uint KeepAliveInterval { get; set; } = 10*1000; // ms
+        public uint KeepAliveCountDeadLine { get; set; } = 5;
 
         private bool _stopped;
 
@@ -61,12 +64,28 @@ namespace mom
                 {
                     _reconnect();
                 }
+
+                _scheduler.Cancel(_keepAlive);
             });
 
             if (string.IsNullOrEmpty(ip) || port == 0)
                 Logger.Ins.Warn("Ip or Port is invalid!");
             else if (!SetAddress(ip, port))
                 throw new Exception("Ip or Port is invalid!");
+        }
+
+        private void _keepAlive()
+        {
+            if(Session == null) return;
+
+            if (Session.KeepAliveCounter > KeepAliveCountDeadLine)
+            {
+                Session.Close(SessionCloseReason.ClosedByRemotePeer);
+            }
+            else if (Session.ElapsedSinceLastResponse > KeepAliveInterval)
+            {
+                Session.Ping();
+            }
         }
 
         private void _reconnect()
@@ -122,13 +141,14 @@ namespace mom
             _stopped = true;
 
             _connectEvent.Dispose();
-            _underlineSocket.Close();
-
-            Session.Close(SessionCloseReason.Stop);
-            Session = null;
-
             _underlineSocket = null;
             _connectEvent = null;
+
+            if (Session != null)
+            {
+                Session.Close(SessionCloseReason.Stop);
+                Session = null;
+            }
 
             Logger.Ins.Debug("Client stopped!");
         }
@@ -158,6 +178,8 @@ namespace mom
         {
             Session = new Session(sock, 0, _dispatcher);
             Session.Start();
+
+            _scheduler.Invoke(_keepAlive, KeepAliveInterval, KeepAliveInterval);
         }
 
         private void OnConnectCompleted(object sender, SocketAsyncEventArgs e)

@@ -27,12 +27,17 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+
+#if NET35
+#else
 using System.Threading.Tasks;
+#endif
 
 namespace mom
 {
@@ -87,48 +92,146 @@ namespace mom
         End
     }
 
+    /// <summary>
+    ///     RPC结果
+    /// </summary>
     public class Result
     {
-        public ushort Err { get; }
-        public byte[] Data { get; }
-
-        public Result(ushort err, byte[] data)
+        public Result(ushort err, byte[] data, Action<object> cb, object callbackData) : this(err, data, cb)
         {
-            Err = err;
+            CallbackData = callbackData;
+        }
+
+        public Result(ushort err, byte[] data, Action<object> cb) : this(err, data)
+        {
+            Callback = cb;
+        }
+
+        public Result(ushort err, byte[] data) : this(err)
+        {
             Data = data;
+        }
+
+        public Result(ushort err, Action<object> cb, object callbackData) : this(err, cb)
+        {
+            CallbackData = callbackData;
+        }
+
+        public Result(ushort err, Action<object> cb) : this(err)
+        {
+            Callback = cb;
         }
 
         public Result(ushort err)
         {
             Err = err;
             Data = null;
+            Callback = null;
+            CallbackData = null;
         }
 
+        /// <summary>
+        ///     错误码
+        /// </summary>
+        public ushort Err { get; }
+
+        /// <summary>
+        ///     数据
+        /// </summary>
+        public byte[] Data { get; }
+
+        /// <summary>
+        ///     Response回调
+        /// </summary>
+        public Action<object> Callback { get; }
+
+        /// <summary>
+        ///     回调数据
+        ///     不做修改，原本返回
+        /// </summary>
+        public object CallbackData { get; set; }
+
+        /// <summary>
+        ///     错误码隐式转换成Result
+        /// </summary>
+        /// <param name="error"></param>
         public static implicit operator Result(ushort error)
         {
-            return new Result(error, null);
+            return new Result(error);
         }
 
+        /// <summary>
+        ///     错误码隐式转换成Result
+        /// </summary>
+        /// <param name="error"></param>
+        public static implicit operator Result(NetError error)
+        {
+            return (ushort) error;
+        }
+
+        /// <summary>
+        ///     Result隐式转换成bool
+        /// </summary>
+        /// <param name="ret"></param>
         public static implicit operator bool(Result ret)
         {
             return ret?.Err == 0;
         }
     }
 
+    /// <summary>
+    ///     会话
+    /// </summary>
     public sealed class Session
     {
-        private enum Pattern
+        public const ushort PackageMaxSize = 1*1024;
+        public const ushort ReceiveBufferSize = 1*1024;
+        public const ushort HeaderSize = sizeof(ushort);
+        private const byte PatternSize = sizeof(byte);
+        private const byte SerialSize = sizeof(ushort);
+        private const byte ErrorNoSize = sizeof(ushort);
+        private readonly IDispatcher _dispatcher;
+
+        // 请求池
+        private readonly Dictionary<ushort, Action<Result>> _requests =
+            new Dictionary<ushort, Action<Result>>();
+
+        private readonly List<byte[]> _slices = new List<byte[]>();
+
+
+        private readonly Stopwatch _watch = new Stopwatch();
+
+        private int _closeFlag = 1;
+        private Extractor _extractor;
+        private long _lastResponseTime;
+
+        // 接收相关
+        private readonly SocketAsyncEventArgs _receiveAsyncEventArgs;
+        private CircularBuffer _receiveBuffer;
+
+        private ushort _serialSeed;
+
+        public Session(Socket socket, ushort id, IDispatcher dispatcher = null)
         {
-            Push,
-            Request,
-            Response,
-            Ping,
-            Pong
+            _watch.Start();
+            UnderlineSocket = socket;
+            Id = id;
+
+            _dispatcher = dispatcher ?? new DefaultDispatcher();
+
+            _receiveBuffer = new CircularBuffer(ReceiveBufferSize);
+            _extractor = new Extractor(PackageMaxSize);
+
+            _receiveAsyncEventArgs = new SocketAsyncEventArgs();
+            _receiveAsyncEventArgs.Completed += OnReceiveCompleted;
         }
 
         public ushort Id { get; }
         public string Name => $"{GetType().Name}:{Id}";
 
+        /// <summary>
+        ///     对端IP
+        /// </summary>
         public string RemoteIp
         {
             get
@@ -147,64 +250,50 @@ namespace mom
 
         public Socket UnderlineSocket { get; private set; }
         public object UserData { get; set; }
+        public long ElapsedSinceLastResponse => _watch.ElapsedMilliseconds - _lastResponseTime;
 
-        public const ushort PackageMaxSize = 1*1024;
-        public const ushort ReceiveBufferSize = 1*1024;
-        public const ushort HeaderSize = sizeof(ushort);
-        private const byte PatternSize = sizeof(byte);
-        private const byte SerialSize = sizeof(ushort);
-        private const byte ErrorNoSize = sizeof(ushort);
+        public int KeepAliveCounter { get; private set; }
 
-        // 接收相关
-        private SocketAsyncEventArgs _receiveAsyncEventArgs;
-        private CircularBuffer _receiveBuffer;
-        private Packer _packer;
-
-        // 请求池
-        private readonly Dictionary<ushort, Action<Result>> _requests =
-            new Dictionary<ushort, Action<Result>>();
-
-        private ushort _serialSeed;
-        private readonly IDispatcher _dispatcher;
-        private readonly List<byte[]> _slices = new List<byte[]>();
-
-        private int _closeFlag = 1;
-
-        public Session(Socket socket, ushort id, IDispatcher dispatcher = null)
+        /// <summary>
+        ///     启动会话
+        /// </summary>
+        public void Start()
         {
-            UnderlineSocket = socket;
-            Id = id;
+            Interlocked.Exchange(ref _closeFlag, 0);
 
-            _dispatcher = dispatcher ?? new DefaultDispatcher();
+            // 投递首次接受请求
+            WakeupReceive();
 
-            _receiveBuffer = new CircularBuffer(ReceiveBufferSize);
-            _packer = new Packer(PackageMaxSize);
-
-            _receiveAsyncEventArgs = new SocketAsyncEventArgs();
-            _receiveAsyncEventArgs.Completed += OnReceiveCompleted;
+            // 回调Dispatcher
+            _dispatcher.OnOpen(this);
         }
 
+        /// <summary>
+        ///     关闭会话
+        /// </summary>
+        /// <param name="reason"></param>
         public void Close(SessionCloseReason reason)
         {
-            if(Interlocked.CompareExchange(ref _closeFlag, 1, 0) == 1)
+            if (Interlocked.CompareExchange(ref _closeFlag, 1, 0) == 1)
                 return;
-            
+
             if (UnderlineSocket.Connected)
                 UnderlineSocket.Shutdown(SocketShutdown.Both);
-            
+
             UnderlineSocket.Close();
-            UnderlineSocket.Dispose();
             UnderlineSocket = null;
 
-            _receiveAsyncEventArgs.Dispose();
-            _receiveAsyncEventArgs = null;
+            //_receiveAsyncEventArgs.Dispose();
+            //_receiveAsyncEventArgs = null;
 
             _receiveBuffer = null;
-            _packer = null;
+            _extractor = null;
 
             Loop.Ins.Perform(() => { _dispatcher.OnClose(this, reason); });
         }
 
+#if NET35
+#else
         /// <summary>
         ///     awaitable Request
         /// </summary>
@@ -230,7 +319,13 @@ namespace mom
 
             return await tcs.Task;
         }
+#endif
 
+        /// <summary>
+        ///     请求
+        /// </summary>
+        /// <param name="data"></param>
+        /// <param name="cb"></param>
         public void Request(byte[] data, Action<Result> cb)
         {
             if (data.IsNullOrEmpty())
@@ -271,7 +366,6 @@ namespace mom
         /// </summary>
         /// <param name="sessions"></param>
         /// <param name="data"></param>
-        /// <param name="cb"></param>
         public static void Broadcast(Session[] sessions, byte[] data)
         {
             using (var ms = new MemoryStream())
@@ -289,6 +383,11 @@ namespace mom
             }
         }
 
+        /// <summary>
+        ///     推送
+        /// </summary>
+        /// <param name="data"></param>
+        /// <param name="cb"></param>
         public void Push(byte[] data, Action<bool> cb = null)
         {
             using (var ms = new MemoryStream())
@@ -323,7 +422,40 @@ namespace mom
             using (var bw = new BinaryWriter(ms))
             {
                 bw.Write((byte) Pattern.Pong);
+                Send(ms.ToArray(), null);
+            }
+        }
 
+        public void Ping()
+        {
+            ++KeepAliveCounter;
+
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                bw.Write((byte) Pattern.Ping);
+                Send(ms.ToArray(), null);
+            }
+        }
+
+        public void Sub(string subject)
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                bw.Write((byte) Pattern.Sub);
+                bw.Write(Encoding.ASCII.GetBytes(subject));
+                Send(ms.ToArray(), null);
+            }
+        }
+
+        public void Unsub(string subject)
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                bw.Write((byte) Pattern.Unsub);
+                bw.Write(Encoding.ASCII.GetBytes(subject));
                 Send(ms.ToArray(), null);
             }
         }
@@ -354,11 +486,9 @@ namespace mom
                 using (var ms = new MemoryStream(slice))
                 using (var bw = new BinaryWriter(ms))
                 {
-                    bw.Seek(sizeof(byte) + HeaderSize, SeekOrigin.Begin);
-                    bw.Write(data, i*limit, packLen);
-                    bw.Seek(0, SeekOrigin.Begin);
                     bw.Write((ushort) (packLen + sizeof(byte)));
                     bw.Write((byte) (cnt - i));
+                    bw.Write(data, i*limit, packLen);
                 }
 
                 buffers.Add(new ArraySegment<byte>(slice));
@@ -400,7 +530,7 @@ namespace mom
                     cb?.Invoke(false);
                     Close(SessionCloseReason.WriteError);
                 }
-                
+
                 e.Completed -= OnSendCompleted;
                 SocketAsyncEventArgsPool.Ins.Push(e);
             }
@@ -418,10 +548,14 @@ namespace mom
         private void OnSendCompleted(object sender, SocketAsyncEventArgs e)
         {
             // 在Loop线程回调
-            Loop.Ins.Perform(() => { (e.UserToken as Action<bool>)?.Invoke(e.SocketError == SocketError.Success); });
+            Loop.Ins.Perform(() =>
+            {
+                (e.UserToken as Action<bool>)?.Invoke(e.SocketError == SocketError.Success);
 
-            e.Completed -= OnSendCompleted;
-            SocketAsyncEventArgsPool.Ins.Push(e);
+                e.Completed -= OnSendCompleted;
+                SocketAsyncEventArgsPool.Ins.Push(e);
+            });
+
             Monitor.Ins.IncWroted();
 
             if (e.SocketError != SocketError.Success)
@@ -435,18 +569,9 @@ namespace mom
             ReceiveNext();
         }
 
-        public void Start()
-        {
-            Interlocked.Exchange(ref _closeFlag, 0);
-
-            // 投递首次接受请求
-            WakeupReceive();
-            _dispatcher.OnOpen(this);
-        }
-
         private void ProcessReceive()
         {
-            if(_closeFlag == 1)
+            if (_closeFlag == 1)
                 return;
 
             if (_receiveAsyncEventArgs.SocketError != SocketError.Success)
@@ -463,7 +588,7 @@ namespace mom
 
             _receiveBuffer.MoveByWrite((ushort) _receiveAsyncEventArgs.BytesTransferred);
             ushort packagesCnt = 0;
-            if (_packer.Process(_receiveBuffer, ref packagesCnt) == PackerError.Failed)
+            if (_extractor.Process(_receiveBuffer, ref packagesCnt) == PackerError.Failed)
             {
                 Close(SessionCloseReason.PackError);
                 return;
@@ -476,13 +601,13 @@ namespace mom
             // Timer也在Loop线程
             Loop.Ins.Perform(() =>
             {
-                while (_packer?.Packages.Count > 0)
+                while (_extractor?.Packages.Count > 0)
                 {
                     try
                     {
                         Dispatch();
                     }
-                    catch(Exception e)
+                    catch (Exception e)
                     {
                         Logger.Ins.Exception("Dispatch", e);
                         Close(SessionCloseReason.ReadError);
@@ -509,14 +634,18 @@ namespace mom
 
         private void Dispatch()
         {
-            var pack = _packer.Packages.Dequeue();
+            var pack = _extractor.Packages.Dequeue();
 
             using (var ms = new MemoryStream(pack))
             using (var br = new BinaryReader(ms))
             {
                 var cnt = br.ReadByte();
                 if (cnt < 1)
+                {
+                    Close(SessionCloseReason.PackError);
+                    _slices.Clear();
                     return;
+                }
 
                 _slices.Add(br.ReadBytes(pack.Length - sizeof(byte)));
                 if (cnt == 1)
@@ -551,8 +680,13 @@ namespace mom
             Monitor.Ins.IncReaded();
         }
 
+#if NET35
+        private bool Dispatch(byte[] message)
+#else
         private async Task<bool> Dispatch(byte[] message)
+#endif
         {
+            _lastResponseTime = _watch.ElapsedMilliseconds;
             var left = message.Length;
             using (var ms = new MemoryStream(message))
             using (var br = new BinaryReader(ms))
@@ -571,9 +705,18 @@ namespace mom
                         left -= SerialSize;
                         try
                         {
+#if NET35
+                                _dispatcher.OnRequest(this, br.ReadBytes(left), ret =>
+                                {
+                                    Response(ret.Err, serial, ret.Data, null);
+                                    ret.Callback?.Invoke(ret.CallbackData);
+                                });
+#else
                             var ret = await _dispatcher.OnRequest(this, br.ReadBytes(left));
                             Response(ret.Err, serial, ret.Data, null);
-                        }
+                            ret.Callback?.Invoke(ret.CallbackData);
+#endif
+                            }
                         catch
                         {
                             Response((ushort) NetError.ExceptionCatched, serial, null, null);
@@ -598,6 +741,16 @@ namespace mom
                         break;
 
                     case Pattern.Pong:
+                    {
+                        if (KeepAliveCounter > 0)
+                            --KeepAliveCounter;
+                        break;
+                    }
+
+                    case Pattern.Sub:
+                        break;
+
+                    case Pattern.Unsub:
                         break;
 
                     default:
@@ -632,6 +785,20 @@ namespace mom
             }
 
             ProcessReceive();
+        }
+
+        /// <summary>
+        ///     消息模型
+        /// </summary>
+        private enum Pattern : byte
+        {
+            Push,
+            Request,
+            Response,
+            Ping,
+            Pong,
+            Sub,
+            Unsub
         }
     }
 }

@@ -143,10 +143,5 @@ namespace mom
                 AcceptNext();
             }
         }
-
-        public void Broadcast(byte[] data)
-        {
-            SessionMgr.Broadcast(data);
-        }
     }
 }

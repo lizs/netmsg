@@ -32,6 +32,7 @@ namespace mom
         {
             var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.NoDelay, true);
+            socket.LingerState.Enabled = false;
             return socket;
         }
     }

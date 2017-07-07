@@ -1,4 +1,7 @@
-﻿using System.Collections.Concurrent;
+﻿#if NET35
+#else
+using System.Collections.Concurrent;
+#endif
 using System.Net.Sockets;
 
 namespace mom

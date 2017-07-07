@@ -68,7 +68,7 @@ namespace Sample
             _server?.Stop();
         }
 
-        private class MyDispatcher : DefaultDispatcher
+        private class ClientHandler : DefaultDispatcher
         {
             private static readonly byte[] Data = Encoding.ASCII.GetBytes("Hello world!");
             private static readonly Scheduler _scheduler = new Scheduler();
@@ -109,17 +109,31 @@ namespace Sample
             }
         }
 
+        private class ServerHandler : DefaultDispatcher
+        {
+            public override Task<Result> OnRequest(Session session, byte[] data)
+            {
+                var ret = new Result(0, OnResponse);
+                return Task.FromResult(ret);
+            }
+
+            private void OnResponse(bool success, object arg)
+            {
+                Logger.Ins.Info(arg);
+            }
+        }
+
         private static void run_client()
         {
             // 创建并启动客户端
-            _client = new Client("127.0.0.1", 5002, new MyDispatcher());
+            _client = new Client("127.0.0.1", 5002, new ClientHandler());
             _client.Start();
         }
 
         private static void run_server()
         {
             // 创建并启动客户端
-            _server = new Server("127.0.0.1", 5002);
+            _server = new Server("127.0.0.1", 5002, new ServerHandler());
             _server.Start();
         }
     }

@@ -27,11 +27,15 @@
 
 using System;
 using System.Collections.Generic;
+#if MESSAGE_TRACK_ENABLED
 using System.IO;
 using System.Text;
+#endif
 
-namespace mom {
-    public enum PackerError {
+namespace mom
+{
+    public enum PackerError
+    {
         Success,
         Running,
         Failed
@@ -41,8 +45,10 @@ namespace mom {
     ///     拆包
     ///     非线程安全，需要上层来确保始终在某个线程运行
     /// </summary>
-    public class Packer {
-        public Packer(ushort packMaxSize) {
+    public class Extractor
+    {
+        public Extractor(ushort packMaxSize)
+        {
             PackageMaxSize = packMaxSize;
         }
 
@@ -57,11 +63,14 @@ namespace mom {
 
         public Queue<byte[]> Packages = new Queue<byte[]>();
 
-        public PackerError Process(CircularBuffer buffer, ref ushort packagesCnt) {
+        public PackerError Process(CircularBuffer buffer, ref ushort packagesCnt)
+        {
             PackerError error;
-            if (!_headerExtracted) {
+            if (!_headerExtracted)
+            {
                 error = ProcessHeader(buffer);
-                switch (error) {
+                switch (error)
+                {
                     case PackerError.Running:
                     case PackerError.Failed:
                         return error;
@@ -101,7 +110,7 @@ namespace mom {
                     Logger.Ins.Debug(sb.ToString());
 #endif
 
-                        Reset();
+                    Reset();
 
                     return Process(buffer, ref packagesCnt);
                 }
@@ -111,26 +120,29 @@ namespace mom {
             }
         }
 
-        private void Reset() {
+        private void Reset()
+        {
             _body = null;
             _headerExtracted = false;
             _packageLen = 0;
             _alreadyExtractedLen = 0;
         }
 
-        private PackerError ProcessHeader(CircularBuffer buffer) {
+        private PackerError ProcessHeader(CircularBuffer buffer)
+        {
             if (buffer.ReadableSize < HearderLen) return PackerError.Running;
-            
+
             var one = buffer.Buffer[buffer.Head];
             var two = buffer.Buffer[buffer.Head + 1];
 
             _packageLen = (ushort) (two << 8 | one);
-            if (_packageLen > PackageMaxSize) {
+            if (_packageLen > PackageMaxSize)
+            {
                 Logger.Ins.Warn("Processing buffer size : {0} bytes,  bigger than {1} bytes!", _packageLen,
                     PackageMaxSize);
                 return PackerError.Failed;
             }
-            
+
             _body = new byte[_packageLen];
 
             buffer.MoveByRead(HearderLen);
@@ -138,7 +150,8 @@ namespace mom {
             return PackerError.Success;
         }
 
-        private PackerError ProcessBody(CircularBuffer buffer) {
+        private PackerError ProcessBody(CircularBuffer buffer)
+        {
             var extractLen = Math.Min((ushort) (_packageLen - _alreadyExtractedLen), buffer.ReadableSize);
 
             Buffer.BlockCopy(buffer.Buffer, buffer.Head, _body, _alreadyExtractedLen, extractLen);

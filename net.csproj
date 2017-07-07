@@ -80,6 +80,9 @@
     <Reference Include="System.Core" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="concurrent\BlockingCollection.cs" />
+    <Compile Include="concurrent\ConcurrentDictionary.cs" />
+    <Compile Include="concurrent\ConcurrentStack.cs" />
     <Compile Include="Monitor.cs" />
     <Compile Include="net\IDispatcher.cs" />
     <Compile Include="net\SocketAsyncEventArgsPool.cs" />
@@ -93,7 +96,7 @@
     <Compile Include="net\SocketExt.cs" />
     <Compile Include="net\CircularBuffer.cs" />
     <Compile Include="net\Client.cs" />
-    <Compile Include="net\Packer.cs" />
+    <Compile Include="net\Extractor.cs" />
     <Compile Include="net\Server.cs" />
     <Compile Include="net\Session.cs" />
     <Compile Include="net\SessionMgr.cs" />
