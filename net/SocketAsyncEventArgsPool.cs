@@ -1,4 +1,4 @@
-﻿#if NET35
+#if NET35
 #else
 using System.Collections.Concurrent;
 #endif
