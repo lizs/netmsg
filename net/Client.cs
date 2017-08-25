@@ -54,6 +54,7 @@ namespace mom
         public uint ReconnectDelay { get; set; } = 2*1000;
         public uint KeepAliveInterval { get; set; } = 10*1000; // ms
         public uint KeepAliveCountDeadLine { get; set; } = 5;
+        public bool AutoReconnectEnabled { get; set; } = true;
 
         private bool _stopped;
 
@@ -66,7 +67,7 @@ namespace mom
 
             _dispatcher = new InternalDispatcher(dispatcher ?? new DefaultDispatcher(), reason =>
             {
-                if (!_stopped)
+                if (!_stopped && AutoReconnectEnabled)
                 {
                     _reconnect();
                 }
