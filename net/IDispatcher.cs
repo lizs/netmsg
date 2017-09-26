@@ -16,6 +16,7 @@ namespace mom
 #endif
         void OnClose(Session session, SessionCloseReason reason);
         void OnOpen(Session session);
+        void OnError(string msg);
     }
 
     public class DefaultDispatcher : IDispatcher
@@ -50,6 +51,11 @@ namespace mom
         {
             Logger.Ins.Warn("You should override OnOpen.");
         }
+
+        public virtual void OnError(string msg)
+        {
+            Logger.Ins.Warn("You should override OnError.");
+        }
     }
 
     internal sealed class InternalDispatcher : IDispatcher
@@ -82,15 +88,21 @@ namespace mom
 
         public void OnClose(Session session, SessionCloseReason reason)
         {
-            Logger.Ins.Debug("{0} closed by {1}!", session.Name, reason);
+            Logger.Ins.Debug($"{session.Name} closed by {reason}!");
             _dispatcher?.OnClose(session, reason);
             _closeHandler?.Invoke(reason);
         }
 
         public void OnOpen(Session session)
         {
-            Logger.Ins.Debug("{0} connected!", session.Name);
+            Logger.Ins.Debug($"{session.Name} connected!");
             _dispatcher?.OnOpen(session);
+        }
+
+        public void OnError(string msg)
+        {
+            Logger.Ins.Error(msg);
+            _dispatcher?.OnError(msg);
         }
     }
 }

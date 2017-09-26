@@ -568,6 +568,7 @@ namespace mom
 
             if (e.SocketError != SocketError.Success)
             {
+                Logger.Ins.Warn(e.SocketError);
                 Close(SessionCloseReason.WriteError);
             }
         }

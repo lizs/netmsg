@@ -29,6 +29,8 @@ using System;
 using System.Diagnostics;
 #if NET35
 #else
+using System.Threading;
+using System.Threading.Tasks;
 using System.Collections.Concurrent;
 #endif
 
@@ -51,12 +53,73 @@ namespace mom {
         private TimerManager TimerMgr { get; }
 
         /// <summary>
-        /// 
         /// </summary>
-        public Loop() {
+        public Loop()
+        {
             _workingQueue = new BlockingCollection<IJob>();
             TimerMgr = new TimerManager();
         }
+
+#if NET35
+#else
+        /// <summary>
+        ///     让await结果在Loop线程返回
+        /// </summary>
+        public async Task<TRet> Perform<TRet>(Func<Task<TRet>> fun)
+        {
+            var tcs = new TaskCompletionSource<TRet>();
+            var ret = await fun();
+
+            Perform(() =>
+            {
+                if (!tcs.TrySetResult(ret))
+                {
+                    Logger.Ins.Error("TrySetResult failed");
+                }
+            });
+
+            return await tcs.Task;
+        }
+
+        /// <summary>
+        ///     让await结果在Loop线程返回
+        /// </summary>
+        public async Task<TRet> Perform<TRet, T>(Func<T, Task<TRet>> fun, T param)
+        {
+            var tcs = new TaskCompletionSource<TRet>();
+            var ret = await fun(param);
+
+            Perform(() =>
+            {
+                if (!tcs.TrySetResult(ret))
+                {
+                    Logger.Ins.Error("TrySetResult failed");
+                }
+            });
+
+            return await tcs.Task;
+        }
+
+        /// <summary>
+        ///     让await结果在Loop线程返回
+        /// </summary>
+        /// <returns></returns>
+        public async Task<TRet> Perform<TRet, T1, T2>(Func<T1, T2, Task<TRet>> fun, T1 param1, T2 param2)
+        {
+            var tcs = new TaskCompletionSource<TRet>();
+            var ret = await fun(param1, param2);
+
+            Perform(() =>
+            {
+                if (!tcs.TrySetResult(ret))
+                {
+                    Logger.Ins.Error("TrySetResult failed");
+                }
+            });
+
+            return await tcs.Task;
+        }
+#endif
 
         /// <summary>
         ///     在本服务执行该Action

@@ -29,21 +29,32 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace mom {
-    public sealed class Scheduler {
+namespace mom
+{
+    public sealed class Scheduler
+    {
         private readonly Dictionary<Action, TimerWrapper> _timers = new Dictionary<Action, TimerWrapper>();
 
-        public void Stop() {
+        public void Stop()
+        {
             Clear();
         }
 
-        public void Clear() {
+        public void Clear()
+        {
             foreach (var timer in _timers.Select(x => x.Value))
                 timer.Stop();
             _timers.Clear();
         }
 
-        public void Invoke(Action action, uint delay, uint period) {
+        /// <summary>
+        ///     在delay之后回调，并每隔period回调
+        /// </summary>
+        /// <param name="action"></param>
+        /// <param name="delay"></param>
+        /// <param name="period"></param>
+        public void Invoke(Action action, uint delay, uint period)
+        {
             Cancel(action);
 
             var timer = TimerWrapper.Create(action, delay, period);
@@ -51,7 +62,13 @@ namespace mom {
             timer.Start();
         }
 
-        public void Invoke(Action action, uint delay) {
+        /// <summary>
+        ///     在delay ms之后回调
+        /// </summary>
+        /// <param name="action"></param>
+        /// <param name="delay"></param>
+        public void Invoke(Action action, uint delay)
+        {
             Cancel(action);
 
             var timer = TimerWrapper.Create(action, delay);
@@ -59,7 +76,29 @@ namespace mom {
             timer.Start();
         }
 
-        public void Cancel(Action action) {
+        /// <summary>
+        ///     在time时间回调
+        /// </summary>
+        /// <param name="action"></param>
+        /// <param name="time"></param>
+        public void Invoke(Action action, DateTime time)
+        {
+            var now = DateTime.Now;
+            if (time < now)
+            {
+                Logger.Ins.Error("Attempt to invoke action before now!!!");
+                return;
+            }
+
+            Invoke(action, (uint) (time - now).TotalMilliseconds);
+        }
+
+        /// <summary>
+        ///     取消回调
+        /// </summary>
+        /// <param name="action"></param>
+        public void Cancel(Action action)
+        {
             if (!_timers.ContainsKey(action)) return;
 
             var timer = _timers[action];

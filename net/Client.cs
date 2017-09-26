@@ -39,8 +39,9 @@ namespace mom
     {
         public string Name => $"{Host}:{Port}";
 
-        public string Host { get; private set; }
-        public int Port { get; private set; }
+        public string Host { get; }
+        public int Port { get; }
+
         public IPAddress Address { get; private set; }
         public EndPoint EndPoint { get; private set; }
 
@@ -58,13 +59,8 @@ namespace mom
 
         private bool _stopped;
 
-        public Client(string ip, int port, IDispatcher dispatcher = null)
+        public Client(string host, int port, IDispatcher dispatcher = null)
         {
-            if (string.IsNullOrEmpty(ip) || port == 0)
-                Logger.Ins.Warn("Ip or Port is invalid!");
-            else if (!SetAddress(ip, port))
-                throw new Exception("Ip or Port is invalid!");
-
             _dispatcher = new InternalDispatcher(dispatcher ?? new DefaultDispatcher(), reason =>
             {
                 if (!_stopped && AutoReconnectEnabled)
@@ -74,6 +70,11 @@ namespace mom
 
                 _scheduler.Cancel(_keepAlive);
             });
+
+            Host = host;
+            Port = port;
+
+            Logger.Ins.Debug($"TcpClient : {Host}:{port}");
         }
 
         private void _keepAlive()
@@ -97,57 +98,65 @@ namespace mom
 
         private void OnError(string msg)
         {
-            Logger.Ins.Error("{0}:{1}", Name, msg);
-            _reconnect();
+            Logger.Ins.Error(msg);
+            _dispatcher.OnError(msg);
+
+            if (AutoReconnectEnabled)
+            {
+                _reconnect();
+            }
         }
 
-        public bool SetAddress(string host, int port)
+        private bool ParseAddress()
         {
             try
             {
                 IPAddress addr;
-                if (!IPAddress.TryParse(host, out addr))
+                if (!IPAddress.TryParse(Host, out addr))
                 {
                     // get ip by host
-                    var entry = Dns.GetHostEntry(host);
-                    if (entry == null || entry.AddressList.IsNullOrEmpty())
+                    var entry = Dns.GetHostEntry(Host);
+                    if (entry.AddressList.IsNullOrEmpty())
                     {
                         return false;
                     }
 
-                    addr = entry.AddressList.FirstOrDefault(x => x.AddressFamily == AddressFamily.InterNetworkV6) ??
-                           entry.AddressList.FirstOrDefault(x => x.AddressFamily == AddressFamily.InterNetwork);
+                    // 优先使用ipv4
+                    // 纯ipv6环境下才会使用ipv6
+                    addr = entry.AddressList.FirstOrDefault(x => x.AddressFamily == AddressFamily.InterNetwork) ??
+                           entry.AddressList.FirstOrDefault(x => x.AddressFamily == AddressFamily.InterNetworkV6);
                 }
 
                 Address = addr;
-                Debug.Assert(Address != null, "Address != null");
-                EndPoint = new IPEndPoint(Address, port);
+                EndPoint = new IPEndPoint(Address, Port);
 
-                Host = host;
-                Port = port;
+                Logger.Ins.Debug($"ParseAddress : {Address.AddressFamily} : {Address}");
+                return true;
             }
             catch (Exception e)
             {
-                var msg = $"{e.Message} : {e.StackTrace}";
-                OnError(msg);
-
-                Host = string.Empty;
-                Port = 0;
+                Logger.Ins.Exception("ParseAddress", e);
                 return false;
             }
-
-            return true;
         }
 
         public void Start()
         {
+            if (!ParseAddress())
+            {
+                Loop.Ins.Perform(() => { OnError($"Parse address {Host}:{Port} failed."); });
+                return;
+            }
+
             if (string.IsNullOrEmpty(Host) || Port == 0)
+            {
                 throw new Exception("Address must be setted before start!");
+            }
 
             _connectEvent = new SocketAsyncEventArgs();
             _connectEvent.Completed += OnConnectCompleted;
 
-            _underlineSocket = SocketExt.CreateTcpSocket();
+            _underlineSocket = SocketExt.CreateTcpSocket(Address.AddressFamily);
             Connect();
 
             _stopped = false;

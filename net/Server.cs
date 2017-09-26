@@ -74,7 +74,7 @@ namespace mom
         {
             try
             {
-                _listener = SocketExt.CreateTcpSocket();
+                _listener = SocketExt.CreateTcpSocket(AddressFamily.InterNetwork);
                 _listener.Bind(EndPoint);
                 _listener.Listen(DefaultBacktrace);
             }
