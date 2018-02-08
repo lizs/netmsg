@@ -28,11 +28,7 @@
 using System;
 using System.Text;
 using mom;
-
-#if NET35
-#else
 using System.Threading.Tasks;
-#endif
 
 namespace Sample
 {
@@ -87,7 +83,7 @@ namespace Sample
                         Console.WriteLine("Push failed");
                 });
             }
-            
+
             private static void Request(Session session)
             {
                 session.Request(Data, ret => { Request(session); });
@@ -106,10 +102,7 @@ namespace Sample
 
         private class ServerHandler : DefaultDispatcher
         {
-            public override void OnRequest(Session session, byte[] data, Action<Result> cb)
-            {
-                cb(new Result((ushort) NetError.Success));
-            }
+            public override Task<Result> OnRequest(Session session, byte[] data) => Task.FromResult(new Result((ushort)NetError.Success));
         }
 
         private static void run_client()

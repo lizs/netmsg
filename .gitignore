@@ -55,5 +55,4 @@ Publish/ChatC
 Publish/ChatS
 *.vsp
 *.psess
-Publish/*.vshost.exe
-Publish/*.vshost.exe.config
+publish

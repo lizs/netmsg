@@ -27,11 +27,13 @@
 
 using System;
 
-namespace mom {
+namespace mom
+{
     /// <summary>
     ///     A timer class base on Linux style timer scheduler.
     /// </summary>
-    public sealed class Timer {
+    public sealed class Timer
+    {
         /// <summary>
         ///     Construct a new timer object.
         /// </summary>
@@ -44,7 +46,8 @@ namespace mom {
         ///     zero means the timer is schedule once only
         /// </param>
         public Timer(uint dueTime, uint period)
-            : this(dueTime) {
+            : this(dueTime)
+        {
             Period = period;
         }
 
@@ -55,7 +58,8 @@ namespace mom {
         ///     when to begin this timer, in milliseconds.
         ///     zero means start immediately
         /// </param>
-        public Timer(uint dueTime) {
+        public Timer(uint dueTime)
+        {
             DueTime = dueTime;
         }
 
@@ -78,13 +82,16 @@ namespace mom {
         ///     Call the timer's callback events.
         ///     This method is called by <c>TimerManager</c> class only.
         /// </summary>
-        internal void Trigger() {
+        internal void Trigger()
+        {
             if (Arrived == null) return;
-            try {
+            try
+            {
                 Arrived(this);
             }
-            catch (Exception e) {
-                Logger.Ins.Error("Timer exception, {0} : {1}", e.Message, e.StackTrace);
+            catch (Exception e)
+            {
+                Logger.Ins.Exception("Timer", e);
             }
         }
 
@@ -119,14 +126,16 @@ namespace mom {
         /// <summary>
         ///     Start the timer.
         /// </summary>
-        public void Start() {
+        public void Start()
+        {
             Loop.Ins.QueueTimer(this);
         }
 
         /// <summary>
         ///     Stop the timer.
         /// </summary>
-        public void Stop() {
+        public void Stop()
+        {
             State = null;
             Arrived = null;
             Loop.Ins.DequeueTimer(this);
