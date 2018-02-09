@@ -89,6 +89,7 @@ namespace mom
         NoHandler,
         ReadErrorNo,
         SessionClosed,
+        SubOverflow,
         End
     }
 
@@ -468,6 +469,19 @@ namespace mom
             }
         }
 
+        public void Pub(string subject, byte[] data)
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                bw.Write((byte)Pattern.Pub);
+                bw.Write(Encoding.ASCII.GetBytes(subject));
+                bw.Write((byte)0);
+                bw.Write(data);
+                Send(ms.ToArray(), null);
+            }
+        }
+
         private void Send(byte[] data, Action<bool> cb)
         {
             if (_closeFlag == 1 || data.IsNullOrEmpty())
@@ -818,7 +832,8 @@ namespace mom
             Ping,
             Pong,
             Sub,
-            Unsub
+            Unsub,
+            Pub
         }
     }
 }

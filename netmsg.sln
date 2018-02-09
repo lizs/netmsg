@@ -5,7 +5,7 @@ VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "net", "net.csproj", "{ED0BB4A5-50C0-410F-A55F-94C842C744AC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "sample", "sample\sample.csproj", "{C5CD98E3-82B5-4E62-B19A-4B09FCAE3CAB}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "momc", "momc\momc.csproj", "{C5CD98E3-82B5-4E62-B19A-4B09FCAE3CAB}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -37,8 +37,8 @@ Global
 		{C5CD98E3-82B5-4E62-B19A-4B09FCAE3CAB}.Debug|x86.Build.0 = Debug|Any CPU
 		{C5CD98E3-82B5-4E62-B19A-4B09FCAE3CAB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C5CD98E3-82B5-4E62-B19A-4B09FCAE3CAB}.Release|Any CPU.Build.0 = Release|Any CPU
-		{C5CD98E3-82B5-4E62-B19A-4B09FCAE3CAB}.Release|x64.ActiveCfg = Release|Any CPU
-		{C5CD98E3-82B5-4E62-B19A-4B09FCAE3CAB}.Release|x64.Build.0 = Release|Any CPU
+		{C5CD98E3-82B5-4E62-B19A-4B09FCAE3CAB}.Release|x64.ActiveCfg = Release|x64
+		{C5CD98E3-82B5-4E62-B19A-4B09FCAE3CAB}.Release|x64.Build.0 = Release|x64
 		{C5CD98E3-82B5-4E62-B19A-4B09FCAE3CAB}.Release|x86.ActiveCfg = Release|Any CPU
 		{C5CD98E3-82B5-4E62-B19A-4B09FCAE3CAB}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
